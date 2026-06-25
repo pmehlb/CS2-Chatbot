@@ -72,6 +72,19 @@ class SettingsArea(ChatArea):
                     ui.tooltip('When on, the bot presses your bind key in-game. When off, the '
                                'bot only writes message.cfg — press it yourself (watch the exec light).')
 
+                cooldown_switch = ui.switch('Reply cooldown', value=app.cooldown_enabled,
+                                            on_change=lambda e: set_flag('cooldown_enabled', e.value))
+                with cooldown_switch:
+                    ui.tooltip('When on, the bot waits at least the cooldown below between replies, '
+                               'across every area — useful against command spam.')
+
+                cooldown_input = ui.number('Cooldown (ms)', value=app.cooldown_ms,
+                                           min=0, step=100, format='%.0f',
+                                           on_change=lambda e: set_ms('cooldown_ms', e.value)) \
+                    .classes('w-full')
+                with cooldown_input:
+                    ui.tooltip('Minimum time between any two bot replies when the cooldown is on.')
+
             self._token_section(app)
             self._roster_section(app)
 

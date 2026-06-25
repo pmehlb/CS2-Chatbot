@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import random
+import time
 import traceback
 
 import pydirectinput
@@ -18,6 +19,8 @@ from ui.ui_util import notify_and_log
 logger = logging.getLogger(__name__)
 
 ALL_CHAT_MARKER = '  [ALL] '
+# CS2 tags team chat with these instead of [ALL]; we reply in the same channel.
+TEAM_CHAT_MARKERS = ('  [T] ', '  [CT] ')
 # CS2 appends a LEFT-TO-RIGHT MARK directly after each chat name, before any
 # status decoration like " [DEAD]". It's a reliable end-of-name delimiter, so we
 # cut there to get a clean name that's stable whether the player is alive or dead.
@@ -75,20 +78,34 @@ class LogTailer:
             yield line.rstrip('\r')
 
 
+def _channel_for(line: str):
+    """Return (channel, marker) for a chat line: ('all'|'team', the matched
+    marker), or (None, None) if the line isn't an answerable chat line."""
+    if ALL_CHAT_MARKER in line:
+        return 'all', ALL_CHAT_MARKER
+    for marker in TEAM_CHAT_MARKERS:
+        if marker in line:
+            return 'team', marker
+    return None, None
+
+
 def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
-    """Drain the tailer and return the newest answerable [ALL] chat line.
+    """Drain the tailer and return the newest answerable chat line as
+    ``(message, channel)`` where channel is 'all' or 'team'.
 
     Always consumes all new lines so the byte offset stays current even when the
     bot is off. Every speaker (except us) is registered in ``app.roster`` with a
-    default of "respond" the first time they're seen, so the Settings list keeps
-    a running tally. Messages from people whose roster toggle is off are skipped,
-    so we fall through to the newest message from someone still allowed.
+    default of "respond" the first time they're seen. Messages from people whose
+    roster toggle is off are skipped, so we fall through to the newest message
+    from someone still allowed.
 
-    Returns that message text, or None if there's nothing to answer.
+    Returns (None, None) if there's nothing to answer.
     """
     latest = None
+    latest_channel = None
     for line in tailer.new_lines():
-        if ALL_CHAT_MARKER not in line:
+        channel, marker = _channel_for(line)
+        if channel is None:
             continue
 
         name_part, _, message = line.partition(': ')
@@ -99,9 +116,9 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
         if steam_nick and steam_nick in name_part:
             continue
 
-        # The display name follows the [ALL] marker; cut at the U+200E that CS2
+        # The display name follows the channel marker; cut at the U+200E that CS2
         # appends after it so the name is clean and identical alive or "[DEAD]".
-        raw_name = name_part.partition(ALL_CHAT_MARKER)[2]
+        raw_name = name_part.partition(marker)[2]
         name = raw_name.split(NAME_END_MARKER, 1)[0].strip()
         if not name:
             continue
@@ -114,23 +131,49 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
         # Only the newest message from an allowed speaker is answerable.
         if app.roster[name]:
             latest = message
-    return latest
+            latest_channel = channel
+    return latest, latest_channel
 
 
-async def send_to_game(text: str, app) -> None:
-    """Clean, chunk and type a reply into CS2 via the message.cfg + bind trick."""
-    text = text.replace('"', "''").replace('\n', ' ')
+def chat_command_lines(reply, channel: str, char_limit: int):
+    """Turn a reply into the ordered message.cfg command lines to write.
+
+    ``reply`` is a str (one chat line) or a list of strings (each its own chat
+    line, e.g. the !help block). Each line is cleaned so it sits safely inside a
+    quoted console command (" -> '', newline -> space), split into <=char_limit
+    chunks, and prefixed with the channel verb: 'say' for all-chat, 'say_team'
+    for team chat. Empty/whitespace-only lines are skipped.
+    """
+    verb = 'say_team' if channel == 'team' else 'say'
+    messages = [reply] if isinstance(reply, str) else list(reply)
+    lines = []
+    for msg in messages:
+        clean = msg.replace('"', "''").replace('\n', ' ')
+        if not clean:
+            continue
+        for i in range(0, len(clean), char_limit):
+            lines.append(f'{verb} "{clean[i:i + char_limit]}"')
+    return lines
+
+
+async def send_to_game(reply, app, channel: str = 'all') -> None:
+    """Clean, chunk and type a reply into CS2 via the message.cfg + bind trick.
+
+    ``reply`` may be a str or a list of strings; each resulting cfg line is
+    written and execed in turn. ``channel`` selects say vs say_team.
+    """
+    lines = chat_command_lines(reply, channel, app.chat_char_limit)
+    if not lines:
+        return
 
     # "Thinking" pause before responding: a fixed base plus random jitter on top.
     delay_ms = app.response_delay_ms + random.uniform(0, max(0, app.response_jitter_ms))
     if delay_ms > 0:
         await asyncio.sleep(delay_ms / 1000)
 
-    chunks = [text[i:i + app.chat_char_limit] for i in range(0, len(text), app.chat_char_limit)]
-
-    for chunk in chunks:
+    for line in lines:
         with open(app.exec_path, 'w', encoding='utf-8') as f:
-            f.write(f'say "{chunk}"')
+            f.write(line)
         app.cfg_written = True
 
         # Don't send keypresses to other windows.
@@ -142,6 +185,27 @@ async def send_to_game(text: str, app) -> None:
 
     # Response output is now in message.cfg: exec light goes green.
     set_exec_state(app, True)
+
+
+def write_message_cfg(reply, app, channel: str = 'all') -> bool:
+    """Write a whole reply to message.cfg as a single file (every say line at once).
+
+    Unlike ``send_to_game``, which writes and execs one line at a time for live
+    replies (relying on a keypress + delay between lines while CS2 is focused),
+    this lays down all lines together so one in-game ``exec`` sends the whole
+    block. Used by the Command Bot's "Send help to chat" button, a manual
+    kickoff that runs while the GUI -- not CS2 -- is the foreground window.
+
+    Returns True if anything was written.
+    """
+    lines = chat_command_lines(reply, channel, app.chat_char_limit)
+    if not lines:
+        return False
+    with open(app.exec_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+    app.cfg_written = True
+    set_exec_state(app, True)
+    return True
 
 
 def set_exec_state(app, ready: bool) -> None:
@@ -156,10 +220,19 @@ def set_exec_state(app, ready: bool) -> None:
             app.exec_state_cb(ready)
 
 
+def cooldown_active(app, now: float) -> bool:
+    """True when the global reply cooldown is on and hasn't elapsed yet.
+
+    ``now`` is a ``time.monotonic()`` value compared against ``last_reply_at``.
+    A single cooldown applies across every area, set in Settings > Chatbot.
+    """
+    return app.cooldown_enabled and (now - app.last_reply_at) * 1000 < app.cooldown_ms
+
+
 async def handle_tick(app) -> None:
     """One timer tick: extract -> generate -> send."""
     # Always drain the tailer so the offset (and roster) stays current even while off.
-    message = extract_latest_message(app.tailer, app.steam_nick, app)
+    message, channel = extract_latest_message(app.tailer, app.steam_nick, app)
 
     if not app.powered_on or app.active_area is None:
         return
@@ -170,6 +243,11 @@ async def handle_tick(app) -> None:
     area = app.active_area
     ready, _ = area.is_ready()
     if not ready:
+        return
+
+    # Global cooldown: stay silent until enough time has passed since the last
+    # reply, so we don't even spend a generation call while cooling down.
+    if cooldown_active(app, time.monotonic()):
         return
 
     # We're committing to generate + send a reply: exec light goes red until
@@ -188,4 +266,5 @@ async def handle_tick(app) -> None:
     if not reply:
         return
 
-    await send_to_game(reply, app)
+    await send_to_game(reply, app, channel)
+    app.last_reply_at = time.monotonic()

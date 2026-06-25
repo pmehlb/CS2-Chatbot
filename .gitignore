@@ -229,6 +229,9 @@ release/
 # Ad-hoc / local test scripts (not part of a tracked test suite)
 test_*.py
 _smoke_test.py
+# ...except the tracked tests/ suite, which is version-controlled.
+!tests/test_*.py
+!tests/_smoke_test.py
 
 # Exclude batch files - we use PowerShell only
 *.bat

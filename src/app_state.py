@@ -51,10 +51,16 @@ class AppState:
     response_delay_ms: int = 0
     response_jitter_ms: int = 0
 
+    # Global reply cooldown: a minimum time between any two bot replies, across
+    # all areas, enforced in the chat loop. Disabled by default.
+    cooldown_enabled: bool = False
+    cooldown_ms: int = 3000
+
     # Runtime flags read by the chat loop.
     powered_on: bool = False
     auto_press: bool = True             # press the bind key ourselves vs. let the user press it
     steam_nick: str = ''
+    last_reply_at: float = 0.0          # time.monotonic() of the last sent reply (runtime only)
 
     # Wiring filled in at startup.
     active_area: object = None          # the ChatArea whose tab is currently open

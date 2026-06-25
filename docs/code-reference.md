@@ -60,9 +60,11 @@ plus `load_app_settings()` / `save_app_setting(key, value)` for the cross-cuttin
 | Symbol | Purpose |
 |--------|---------|
 | `LogTailer` | Incrementally tails `console.log`: remembers a byte offset and yields only newly-appended lines via `new_lines()`. `seek_to_end()` skips pre-launch chat; a shrunken file (CS2 recreates the log each launch) resets the offset; a half-written final line is buffered until its newline arrives. |
-| `extract_latest_message(tailer, steam_nick, app)` | Drains the tailer, registers each new `  [ALL] ` speaker (other than `steam_nick`) into `app.roster` defaulting to "respond", and returns the newest message from a speaker still toggled on (so muted speakers are skipped in favour of the latest allowed one), or `None`. |
-| `send_to_game(text, app)` | Waits `response_delay_ms` + a random `0..response_jitter_ms` "thinking" pause, then cleans the text (quotes → `''`, newlines → spaces), splits it into chunks of at most `chat_char_limit`, writes each into `message.cfg`, and — only while CS2 is the foreground window — presses `bind_key` (when `auto_press` is on). |
-| `handle_tick(app)` | One timer tick: always drains the tailer (keeping the offset current), then — if the bot is on and the active area is ready — asks `active_area.generate(...)` for a reply and sends it. |
+| `extract_latest_message(tailer, steam_nick, app)` | Drains the tailer, registers each new `[ALL]`/`[T]`/`[CT]` speaker (other than `steam_nick`) into `app.roster` defaulting to "respond", and returns `(message, channel)` for the newest message from a speaker still toggled on — `channel` is `'all'` or `'team'` — or `(None, None)`. |
+| `chat_command_lines(reply, channel, char_limit)` | Pure helper: turns a `str` or `list[str]` reply into the ordered `message.cfg` command lines, cleaning each (quotes → `''`, newlines → spaces), chunking to `char_limit`, and prefixing with `say` (all) or `say_team` (team). |
+| `send_to_game(reply, app, channel='all')` | Waits the "thinking" pause, then writes each line from `chat_command_lines(...)` into `message.cfg` and — only while CS2 is the foreground window — presses `bind_key` (when `auto_press` is on). Accepts a `str` or `list[str]` reply. |
+| `cooldown_active(app, now)` | Returns `True` when the global reply cooldown is enabled and `cooldown_ms` hasn't elapsed since `app.last_reply_at` (a `time.monotonic()` value). One cooldown applies across every area; set in Settings > Chatbot. |
+| `handle_tick(app)` | One timer tick: always drains the tailer (keeping the offset current), then — if the bot is on, the active area is ready, and the global cooldown isn't active — asks `active_area.generate(...)` for a reply, sends it, and records `last_reply_at`. |
 
 ## `areas/` — pluggable AI behaviours
 
@@ -74,6 +76,7 @@ Each area bundles its own tab UI, its response handler, and its state.
 | `characterai.py` | `CharacterAIArea` | The original Character.AI behaviour: token field, character search/selection, reset-memory button, and `generate()` via `client.chat.send_message(...)`. `is_ready()` requires a token and a selected character. |
 | `mimic.py` | `MimicArea` | Echoes the last message back with randomized capitalization. No configuration. |
 | `string_reverser.py` | `StringReverserArea` | Sends the last message back reversed — the minimal example area. |
+| `commands.py` | `CommandBotArea` | "C2" command bot: parses `!`-prefixed chat (`!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`) via a small command registry, with per-command enable checkboxes. The reply cooldown is a global Settings option, not per-area. `!dadjoke`/`!fact` use free keyless web APIs (httpx). |
 | `__init__.py` | — | `build_areas()` returns the list of areas; the first one is selected on startup. |
 
 ### Adding a new area

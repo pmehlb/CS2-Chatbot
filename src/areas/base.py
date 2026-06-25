@@ -52,5 +52,9 @@ class ChatArea:
         return True, None
 
     async def generate(self, message: str, app):
-        """Produce a reply to `message`, or return None to stay silent."""
+        """Produce a reply to `message`, or return None to stay silent.
+
+        May return a single string (one chat line) or a list of strings (each
+        sent as its own chat line, e.g. a multi-line help block).
+        """
         raise NotImplementedError

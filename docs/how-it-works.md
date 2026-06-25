@@ -72,8 +72,8 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
 
 2. **Read new chat lines.** `core.LogTailer` reads only the bytes appended to
    `console.log` since the previous tick (no whole-file re-read), and the loop
-   takes the newest line containing the marker `  [ALL] ` — how CS2 tags all-chat
-   messages. On startup the tailer skips everything already in the file, and if
+   takes the newest line containing a chat marker — `  [ALL] ` for all-chat, or
+   `  [T] ` / `  [CT] ` for team chat — and remembers which channel it came from. On startup the tailer skips everything already in the file, and if
    CS2 recreates the log (which it does each launch) it resets and keeps
    following.
 
@@ -105,6 +105,11 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
      `answer.get_primary_candidate().text`.
    - **Mimic** returns the message with each character's case randomized
      (`tExT LiKe ThIs`); **String Reverser** returns it reversed.
+   - **Command Bot (C2)** parses the message for a `!`-prefixed command (e.g.
+     `!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`)
+     and returns the command's output, or `None` for anything it doesn't
+     recognize. A reply may be multiple lines (e.g. `!help` sends a 3-line block
+     as separate `say` commands).
    - A handler may return `None` to stay silent. Errors are logged, surfaced as a
      GUI notification, and the tick aborts.
 
@@ -117,7 +122,7 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
    ≤221-character pieces.
 
 7. **Inject each chunk into the game.** For every chunk:
-   - Write the chunk into `cfg/message.cfg` as `say "<chunk>"`.
+   - Write the chunk into `cfg/message.cfg` as `say "<chunk>"` for all-chat, or `say_team "<chunk>"` when the triggering message came from team chat.
    - **Only if** the foreground window title is exactly `Counter-Strike 2`
      (checked with `get_foreground_window_title()`), simulate the bound key
      (`pydirectinput.write('p')`). That keypress triggers CS2's

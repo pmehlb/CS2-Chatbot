@@ -20,6 +20,8 @@ def build(app):
     app.response_delay_ms = saved.get('response_delay_ms', app.response_delay_ms)
     app.response_jitter_ms = saved.get('response_jitter_ms', app.response_jitter_ms)
     app.auto_press = saved.get('auto_press', app.auto_press)
+    app.cooldown_enabled = saved.get('cooldown_enabled', app.cooldown_enabled)
+    app.cooldown_ms = saved.get('cooldown_ms', app.cooldown_ms)
 
     theme = ui.dark_mode()
     theme.enable() if saved.get('dark_theme', True) else theme.disable()
