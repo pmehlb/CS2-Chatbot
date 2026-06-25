@@ -1,7 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 # CS2-Chatbot PyInstaller Specification File
 # This file is REQUIRED for proper dependency inclusion - do not delete!
+import os
 from PyInstaller.utils.hooks import collect_all
+
+# This spec lives in packaging/; resolve source/asset paths relative to its own
+# location so the build works regardless of the directory PyInstaller runs from.
+PROJECT_ROOT = os.path.dirname(SPECPATH)
 
 # Collect all data, binaries, and hidden imports for each package
 nicegui_data, nicegui_binaries, nicegui_hiddenimports = collect_all('nicegui')
@@ -41,8 +46,8 @@ hiddenimports += pycharacterai_hiddenimports
 
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [os.path.join(PROJECT_ROOT, 'src', 'main.py')],
+    pathex=[os.path.join(PROJECT_ROOT, 'src')],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -62,7 +67,7 @@ exe = EXE(
     a.datas,
     [],
     name='CS2-Chatbot',
-    icon='app.ico',
+    icon=os.path.join(SPECPATH, 'app.ico'),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

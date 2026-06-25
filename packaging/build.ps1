@@ -8,11 +8,15 @@ param(
 
 if ($Help) {
     Write-Host "CS2-Chatbot Build Script" -ForegroundColor Green
-    Write-Host "Usage: .\build.ps1 [-Clean] [-Help]" -ForegroundColor White
+    Write-Host "Usage: .\packaging\build.ps1 [-Clean] [-Help]" -ForegroundColor White
     Write-Host "  -Clean  Clean build artifacts before building"
     Write-Host "  -Help   Show this help message"
     exit 0
 }
+
+# This script lives in packaging/; run from the repo root so all relative paths
+# (venv, dist, release, spec) resolve regardless of where it was invoked from.
+Set-Location (Split-Path -Parent $PSScriptRoot)
 
 Write-Host "Building CS2-Chatbot..." -ForegroundColor Green
 
@@ -38,7 +42,7 @@ if (Test-Path ".\release\CS2-Chatbot.exe") {
 Write-Host "Starting build..." -ForegroundColor Cyan
 
 # Build directly with PyInstaller using our spec file
-& ".\venv\Scripts\pyinstaller" "--clean" "--noconfirm" "CS2-Chatbot.spec"
+& ".\venv\Scripts\pyinstaller" "--clean" "--noconfirm" "packaging\CS2-Chatbot.spec"
 $exitCode = $LASTEXITCODE
 
 # Create release folder and copy files
@@ -49,8 +53,7 @@ if ($exitCode -eq 0 -and (Test-Path ".\dist\CS2-Chatbot.exe")) {
     # Copy executable and documentation
     Copy-Item ".\dist\CS2-Chatbot.exe" ".\release\CS2-Chatbot.exe" -Force
     if (Test-Path "README.md") { Copy-Item "README.md" ".\release\" -Force }
-    if (Test-Path "LICENSE") { Copy-Item "LICENSE" ".\release\" -Force }
-    
+
     $fileInfo = Get-Item ".\release\CS2-Chatbot.exe"
     $sizeInMB = [math]::Round($fileInfo.Length / 1MB, 1)
     

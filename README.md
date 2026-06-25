@@ -33,7 +33,7 @@ This application is designed for Windows and requires PowerShell to build:
 2. Create a virtual environment: `python -m venv venv`
 3. Activate it: `.\venv\Scripts\Activate.ps1`
 4. Install dependencies: `pip install -r requirements.txt`
-5. Build executable: `powershell -ExecutionPolicy Bypass -File .\build.ps1`
+5. Build executable: `powershell -ExecutionPolicy Bypass -File .\packaging\build.ps1`
 
 The built executable will be in the `release` folder.
 

@@ -1,3 +1,6 @@
+.impeccable/
+.idea/
+
 # Created by https://www.toptal.com/developers/gitignore/api/python,virtualenv,windows
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,virtualenv,windows
 
@@ -218,9 +221,16 @@ cs2_chatbot_debug.log
 chatbot_settings.json
 
 # PyInstaller build artifacts
-!CS2-Chatbot.spec  # Keep our build spec file - it's required for proper dependency inclusion
+# Keep our build spec file - it's required for proper dependency inclusion
+# (git has no inline-comment support, so comments must be on their own line)
+!packaging/CS2-Chatbot.spec
 release/
+
+# Ad-hoc / local test scripts (not part of a tracked test suite)
 test_*.py
-*.bat  # Exclude batch files - we use PowerShell only
+_smoke_test.py
+
+# Exclude batch files - we use PowerShell only
+*.bat
 
 # End of https://www.toptal.com/developers/gitignore/api/python,virtualenv,windows
