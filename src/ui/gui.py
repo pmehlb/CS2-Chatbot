@@ -22,6 +22,7 @@ def build(app):
     app.auto_press = saved.get('auto_press', app.auto_press)
     app.cooldown_enabled = saved.get('cooldown_enabled', app.cooldown_enabled)
     app.cooldown_ms = saved.get('cooldown_ms', app.cooldown_ms)
+    app.toggle_key = saved.get('toggle_key', app.toggle_key)
 
     theme = ui.dark_mode()
     theme.enable() if saved.get('dark_theme', True) else theme.disable()
@@ -74,6 +75,22 @@ def build(app):
         exec_light.props(f'color={"green" if ready else "red"}')
 
     app.exec_state_cb = set_exec_light
+
+    # Global toggle hotkey. The keyboard library fires request_toggle on its own
+    # thread, so it only flips a flag; poll_toggle (on the UI thread) clears it
+    # and drives the exact same path as clicking the power button.
+    def request_toggle():
+        app.toggle_requested = True
+
+    app.hotkeys.bind_callback(request_toggle)
+    app.hotkeys.rebind(app.toggle_key)  # register the saved key (no-op if unset)
+
+    def poll_toggle():
+        if app.toggle_requested:
+            app.toggle_requested = False
+            toggle_active._handle_click()
+
+    ui.timer(0.1, poll_toggle)
 
 
 def _gate_power(app, new_state, status_badge):

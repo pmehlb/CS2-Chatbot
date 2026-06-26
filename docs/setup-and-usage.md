@@ -116,11 +116,25 @@ reversed. Open either tab and hit power — no token required.
 
 ### Settings tab
 
+A 2-column grid of cards: **Logic** | **Known Players** on the top row, **API
+Tokens** | **Appearance** below.
+
+- **Logic** — bot behaviour and timing:
+  - **Respond Delay** and **Respond Jitter** (ms, side by side) — a fixed
+    "thinking" pause plus a random amount on top, so replies don't appear instantly.
+  - **Auto-press execute key** — when on, the bot presses your bind key in-game;
+    when off it only writes `message.cfg` and you press the key yourself.
+  - **Reply cooldown** + **Cooldown (ms)** — a minimum time between any two
+    replies, across every area.
+  - **Toggle keybind** — click **Set**, then press a key to bind a **global**
+    hotkey that turns the bot on/off even while CS2 is focused. The choice is
+    saved between launches; **Clear** unbinds it. (Unset by default.)
+- **Known Players** — one toggle per person seen in chat this session, plus a
+  Clear button to forget everyone.
+- **API Tokens** — secret inputs contributed by the areas (e.g. the Character.AI
+  token); only shown when at least one area needs a token.
 - **Appearance** — a *Dark Theme* switch and a primary-color picker (the default
   accent is pink, `#ec4899`).
-- **Chatbot** — the **Humanized Typing Speed** switch, which adds a delay
-  proportional to message length before sending, so replies don't appear
-  instantly. (It applies to whichever behaviour is active.)
 
 ## Typical session
 

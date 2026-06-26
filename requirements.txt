@@ -5,6 +5,7 @@ httpx~=0.28
 numerize~=0.12
 vdf~=3.4
 pywebview~=6.0
+keyboard~=0.13  # global hotkey to toggle the bot on/off
 
 # Development and build dependencies
 pyinstaller>=6.0  # For building executable files

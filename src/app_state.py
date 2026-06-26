@@ -62,10 +62,19 @@ class AppState:
     steam_nick: str = ''
     last_reply_at: float = 0.0          # time.monotonic() of the last sent reply (runtime only)
 
+    # Global hotkey that toggles the bot on/off. The chosen key is persisted
+    # (empty = unset, no default). ``toggle_requested`` is set by the hotkey
+    # callback on the keyboard library's thread and polled/cleared by a GUI
+    # timer, which marshals the toggle onto the UI thread (GIL-safe bool flag,
+    # same idiom as roster_version).
+    toggle_key: str = ''
+    toggle_requested: bool = False
+
     # Wiring filled in at startup.
     active_area: object = None          # the ChatArea whose tab is currently open
     areas: list = field(default_factory=list)
     tailer: object = None               # core.LogTailer
+    hotkeys: object = None              # system.hotkey.HotkeyManager (toggle hotkey)
 
     # Running roster of everyone seen in [ALL] chat this session, mapping the
     # exact display name -> whether to respond to them (True by default).

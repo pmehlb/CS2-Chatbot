@@ -13,21 +13,24 @@ nicegui_data, nicegui_binaries, nicegui_hiddenimports = collect_all('nicegui')
 pywebview_data, pywebview_binaries, pywebview_hiddenimports = collect_all('pywebview')
 pydirectinput_data, pydirectinput_binaries, pydirectinput_hiddenimports = collect_all('pydirectinput')
 pycharacterai_data, pycharacterai_binaries, pycharacterai_hiddenimports = collect_all('PyCharacterAI')
+keyboard_data, keyboard_binaries, keyboard_hiddenimports = collect_all('keyboard')
 
 datas = []
 datas += nicegui_data
 datas += pywebview_data
 datas += pydirectinput_data
 datas += pycharacterai_data
+datas += keyboard_data
 
 binaries = []
 binaries += nicegui_binaries
 binaries += pywebview_binaries
 binaries += pydirectinput_binaries
 binaries += pycharacterai_binaries
+binaries += keyboard_binaries
 
 hiddenimports = [
-    'PyCharacterAI', 'nicegui', 'pydirectinput', 'requests', 'numerize', 'vdf', 'pywebview',
+    'PyCharacterAI', 'nicegui', 'pydirectinput', 'requests', 'numerize', 'vdf', 'pywebview', 'keyboard',
     # Additional modules that might be missed
     'asyncio', 'json', 'random', 'traceback', 'logging',
     # NiceGUI specific modules
@@ -43,6 +46,7 @@ hiddenimports += nicegui_hiddenimports
 hiddenimports += pywebview_hiddenimports
 hiddenimports += pydirectinput_hiddenimports
 hiddenimports += pycharacterai_hiddenimports
+hiddenimports += keyboard_hiddenimports
 
 
 a = Analysis(

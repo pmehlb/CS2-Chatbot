@@ -40,53 +40,108 @@ class SettingsArea(ChatArea):
         def set_ms(name, value):
             set_flag(name, max(0, int(value or 0)))
 
+        # Cards fill the 2-col grid left -> right, top -> bottom:
+        #   Logic | Known Players  /  API Tokens | Appearance.
         with ui.grid(columns=2).classes('gap-4 w-full'):
+            with settings_card('Logic'):
+                # The two timing fields sit side by side (50% / 50%); the cooldown
+                # field stays full-width below, grouped with its own switch.
+                with ui.grid(columns=2).classes('gap-3 w-full'):
+                    delay_input = ui.number('Respond Delay (ms)', value=app.response_delay_ms,
+                                            min=0, step=50, format='%.0f',
+                                            on_change=lambda e: set_ms('response_delay_ms', e.value))
+                    with delay_input:
+                        ui.tooltip('Fixed pause before the bot sends a reply (to stimulate thinking/typing time).')
+
+                    jitter_input = ui.number('Respond Jitter (ms)', value=app.response_jitter_ms,
+                                             min=0, step=50, format='%.0f',
+                                             on_change=lambda e: set_ms('response_jitter_ms', e.value))
+                    with jitter_input:
+                        ui.tooltip('Random time between 0 - X ms added to the respond delay (to simulate variance).')
+
+                # Reply-cooldown switch and its number box share one 50% / 50% row.
+                with ui.grid(columns=2).classes('gap-3 w-full items-center'):
+                    cooldown_switch = ui.switch('Cooldown', value=app.cooldown_enabled,
+                                                on_change=lambda e: set_flag('cooldown_enabled', e.value)) \
+                        .props('dense')
+                    with cooldown_switch:
+                        ui.tooltip('Bot waits at least the cooldown below between replies (useful against command spam).')
+
+                    cooldown_input = ui.number('Cooldown (ms)', value=app.cooldown_ms,
+                                               min=0, step=100, format='%.0f',
+                                               on_change=lambda e: set_ms('cooldown_ms', e.value)) \
+                        .classes('w-full')
+                    with cooldown_input:
+                        ui.tooltip('Minimum time between any two bot replies when the cooldown is on.')
+
+                auto_switch = ui.switch('Auto-press execute key', value=app.auto_press,
+                                        on_change=lambda e: set_flag('auto_press', e.value)) \
+                    .props('dense')
+                with auto_switch:
+                    ui.tooltip('When on, the bot presses your bind key in-game. When off, the '
+                               'bot only writes message.cfg — press it yourself (watch the exec light).')
+
+                self._keybind_row(app, set_flag)
+
+            self._roster_section(app)
+            self._token_section(app)
+
             with settings_card('Appearance'):
                 ui.switch('Dark Theme', value=saved.get('dark_theme', True),
-                          on_change=lambda e: set_theme(e.value))
+                          on_change=lambda e: set_theme(e.value)).props('dense')
 
                 with ui.row().classes('items-center gap-2'):
                     with ui.button(icon='colorize').props('rounded'):
                         ui.color_picker(on_pick=lambda e: set_color(e.color))
                     ui.label('Accent color').classes('text-sm opacity-70')
 
-            with settings_card('Chatbot'):
-                delay_input = ui.number('Wait before responding (ms)', value=app.response_delay_ms,
-                                        min=0, step=50, format='%.0f',
-                                        on_change=lambda e: set_ms('response_delay_ms', e.value)) \
-                    .classes('w-full')
-                with delay_input:
-                    ui.tooltip('Fixed pause before the bot sends a reply, simulating thinking time.')
+    def _keybind_row(self, app, set_flag):
+        """Render the global enable/disable hotkey control inside the Logic card.
 
-                jitter_input = ui.number('Jitter range (ms)', value=app.response_jitter_ms,
-                                         min=0, step=50, format='%.0f',
-                                         on_change=lambda e: set_ms('response_jitter_ms', e.value)) \
-                    .classes('w-full')
-                with jitter_input:
-                    ui.tooltip('A random amount between 0 and this is added on top of the wait, '
-                               'so the delay varies each time.')
+        Press-to-record: clicking Set pauses the live hotkey, awaits one keypress
+        (in a worker thread), then re-registers and persists it. A refreshable row
+        keeps the shown key in sync after Set/Clear.
+        """
+        if not app.hotkeys.available:
+            ui.label('Toggle keybind unavailable (keyboard library not loaded).') \
+                .classes('text-sm text-grey')
+            return
 
-                auto_switch = ui.switch('Auto-press execute key', value=app.auto_press,
-                                        on_change=lambda e: set_flag('auto_press', e.value))
-                with auto_switch:
-                    ui.tooltip('When on, the bot presses your bind key in-game. When off, the '
-                               'bot only writes message.cfg — press it yourself (watch the exec light).')
+        @ui.refreshable
+        def row():
+            with ui.row().classes('items-center gap-2 w-full'):
+                key = app.toggle_key
+                with ui.row().classes('items-center gap-1'):
+                    ui.label('App Toggle:').classes('text-sm')
+                    ui.label(key if key else '(not set)').classes('text-sm font-bold')
 
-                cooldown_switch = ui.switch('Reply cooldown', value=app.cooldown_enabled,
-                                            on_change=lambda e: set_flag('cooldown_enabled', e.value))
-                with cooldown_switch:
-                    ui.tooltip('When on, the bot waits at least the cooldown below between replies, '
-                               'across every area — useful against command spam.')
+                set_btn = ui.button('Set', icon='keyboard').props('outline dense') \
+                    .classes('ml-auto').style('padding-left: 8px; padding-right: 4px')
+                with set_btn:
+                    ui.tooltip('A system-wide key that turns the bot on/off — works while CS2 '
+                               'is focused. Click, then press the key you want.')
 
-                cooldown_input = ui.number('Cooldown (ms)', value=app.cooldown_ms,
-                                           min=0, step=100, format='%.0f',
-                                           on_change=lambda e: set_ms('cooldown_ms', e.value)) \
-                    .classes('w-full')
-                with cooldown_input:
-                    ui.tooltip('Minimum time between any two bot replies when the cooldown is on.')
+                async def record():
+                    set_btn.set_text('Press a key…')
+                    set_btn.props('loading')
+                    app.hotkeys.clear()              # pause the live hotkey while recording
+                    recorded = await app.hotkeys.record()
+                    target = recorded or app.toggle_key   # empty -> keep the old binding
+                    app.hotkeys.rebind(target)
+                    set_flag('toggle_key', target)
+                    row.refresh()
 
-            self._token_section(app)
-            self._roster_section(app)
+                set_btn.on('click', record)
+
+                if app.toggle_key:
+                    def clear():
+                        app.hotkeys.rebind('')
+                        set_flag('toggle_key', '')
+                        row.refresh()
+                    ui.button('Clear', icon='delete', on_click=clear).props('outline dense') \
+                        .style('padding-left: 8px; padding-right: 4px')
+
+        row()
 
     def _roster_section(self, app):
         """Render the live 'Known Players' card: one toggle per person seen in chat.
@@ -104,7 +159,7 @@ class SettingsArea(ChatArea):
                 return
             for name in app.roster:
                 ui.switch(name, value=app.roster[name],
-                          on_change=lambda e, n=name: app.roster.__setitem__(n, e.value))
+                          on_change=lambda e, n=name: app.roster.__setitem__(n, e.value)).props('dense')
 
         def clear():
             app.roster.clear()
@@ -124,7 +179,8 @@ class SettingsArea(ChatArea):
                 with ui.column().classes('gap-3 w-full'):
                     with ui.row().classes('items-center justify-between w-full'):
                         ui.badge('Known Players')
-                        ui.button('Clear', icon='delete', on_click=clear).props('outline dense')
+                        ui.button('Clear', icon='delete', on_click=clear).props('outline dense') \
+                            .style('padding-left: 8px; padding-right: 4px')
                     roster_list()
 
         # Redraw the list when the chat loop adds someone (or it's cleared).
@@ -158,11 +214,12 @@ class SettingsArea(ChatArea):
             app.save_area_settings(area.key, data)
             await field.on_set(value)
 
-        with ui.row().classes('items-center gap-2 w-full'):
+        with ui.row().classes('items-center gap-2 w-full no-wrap'):
             token_input = ui.input(label=field.label, password=True,
-                                   on_change=lambda e: on_change(e.value)).classes('w-64')
+                                   on_change=lambda e: on_change(e.value)) \
+                .props('hide-bottom-space').classes('grow')
             if help_dialog is not None:
-                ui.button(icon='help', on_click=help_dialog.open).props('rounded')
+                ui.button(icon='help', on_click=help_dialog.open).props('round dense size=sm')
 
         # Restore the saved value; setting .value fires on_change -> persist + on_set.
         saved = app.load_area_settings(area.key).get(field.key)

@@ -17,6 +17,7 @@ import core
 from app_state import AppState
 from areas import build_areas
 from system import winutil
+from system.hotkey import HotkeyManager
 from ui import gui
 
 if __name__ == "__main__":
@@ -52,6 +53,7 @@ if __name__ == "__main__":
     app.areas = build_areas()
     app.tailer = core.LogTailer(app.log_path)
     app.tailer.seek_to_end()  # don't replay chat from before launch
+    app.hotkeys = HotkeyManager()  # toggle hotkey; gui.build registers the saved key
 
     gui.build(app)
 
