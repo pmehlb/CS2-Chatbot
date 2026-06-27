@@ -59,6 +59,19 @@ TOKEN_HELP_MD = '''
 </ol>
 '''
 
+WEB_NEXT_AUTH_HELP_MD = '''
+<h1 style="margin: 0 0 20px 0">Get C.AI Web-Next-Auth</h1>
+
+<p style="margin: 0 0 12px 0">Searching characters by name needs this second token (a browser cookie) in addition to the C.AI Token above.</p>
+
+<ol>
+    <li> Visit <a style="text-decoration: none; color: hotpink;" target='_blank' href='https://character.ai/'>https://character.ai/</a> while logged in </li>
+    <li> Open DevTools in your browser </li>
+    <li> Go to Storage → Cookies → <code>web-next-auth</code> </li>
+    <li> Copy value </li>
+</ol>
+'''
+
 
 class CharacterAIArea(ChatArea):
     key = 'characterai'
@@ -69,6 +82,7 @@ class CharacterAIArea(ChatArea):
         self.app = None
         self.client = None
         self.token = ''             # set via the Settings > API Tokens section
+        self.web_next_auth = ''     # second C.AI token, required for name search
         self.current_character_id = None
         self.current_char = None
         self.current_chat = None
@@ -81,12 +95,15 @@ class CharacterAIArea(ChatArea):
         self.count_badge = None
         self.results = None
         self.reset_button = None
+        self.status_label = None
 
     # ------------------------------------------------------------------ contract
 
     def tokens(self):
         return [TokenField(key='token', label='C.AI Token',
-                           on_set=self.set_token, help_md=TOKEN_HELP_MD)]
+                           on_set=self.set_token, help_md=TOKEN_HELP_MD),
+                TokenField(key='web_next_auth', label='C.AI Web-Next-Auth (search)',
+                           on_set=self.set_web_next_auth, help_md=WEB_NEXT_AUTH_HELP_MD)]
 
     def is_ready(self):
         if not self.token:
@@ -146,8 +163,21 @@ class CharacterAIArea(ChatArea):
             with self.reset_button:
                 ui.tooltip("⚠️ Reset Character's memory").classes('bg-red')
 
+        # Small status line: which character the bot is currently chatting as.
+        self.status_label = ui.label().classes('text-sm opacity-70 mt-2 w-full')
+        self._update_status()
+
         self.results = ui.row().classes('justify-center gap-3 mt-3 w-full')
         self._show_recents()
+
+    def _update_status(self) -> None:
+        """Reflect the currently-selected character in the status line."""
+        if self.status_label is None:
+            return
+        if self.current_char:
+            self.status_label.text = f'💬 Currently chatting with: {self.current_char.name}'
+        else:
+            self.status_label.text = 'No character selected — search and pick one to start chatting.'
 
     # ------------------------------------------------------------------ helpers
 
@@ -169,6 +199,11 @@ class CharacterAIArea(ChatArea):
         except Exception as e:
             ui.notify(f'Authentication failed: {e}', type='negative')
             self.client = None
+
+    async def set_web_next_auth(self, web_next_auth):
+        # Stored only; the C.AI search endpoint reads it per-call (see search()),
+        # so there's nothing to authenticate here.
+        self.web_next_auth = web_next_auth or ''
 
     def select_character_sync(self, char):
         """Run the async select_character from a sync click handler."""
@@ -193,6 +228,7 @@ class CharacterAIArea(ChatArea):
 
             self.reset_button.enable()
             self._record_recent(char)
+            self._update_status()
 
             avatar = _avatar_url(char)
             notify_and_log(f'Selected <b>{char.name}</b> as your character.', type='positive', avatar=avatar,
@@ -236,6 +272,13 @@ class CharacterAIArea(ChatArea):
             await self._load_by_id(query)
             return
 
+        # Name search hits a tRPC endpoint that only authenticates via the
+        # web-next-auth cookie; without it the request fails and shows nothing.
+        if query_type == 'Search' and not self.web_next_auth:
+            notify_and_log('Set your C.AI "Web-Next-Auth" token in Settings > API Tokens to search by name.',
+                           type='warning')
+            return
+
         self.search_btn.disable()
 
         try:
@@ -265,18 +308,20 @@ class CharacterAIArea(ChatArea):
                 characters = await self.client.character.fetch_featured_characters()
             elif query_type == 'Search':
                 logger.debug(f"Searching for characters with query: {self.character_input.value}")
-                characters = await self.client.character.search_characters(self.character_input.value)
+                characters = await self.client.character.search_characters(
+                    self.character_input.value, web_next_auth=self.web_next_auth)
             else:
                 characters = []
 
             logger.debug(f"Retrieved {len(characters)} characters for query_type: {query_type}")
             self._render_cards(characters)
 
-        except Exception:
-            ui.notify(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Character search failed: {e}")
+            logger.error(traceback.format_exc())
+            notify_and_log(f'Search failed: {e}', type='negative')
+        finally:
             self.search_btn.enable()
-
-        self.search_btn.enable()
 
     # ------------------------------------------------------------------ recents + rendering
 

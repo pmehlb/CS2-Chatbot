@@ -6,6 +6,7 @@ its own tab and show up in the app automatically. The first area in the list is
 the one selected on startup.
 """
 from .characterai import CharacterAIArea
+from .chatgpt import ChatGPTArea
 from .commands import CommandBotArea
 from .mimic import MimicArea
 from .settings import SettingsArea
@@ -17,6 +18,7 @@ def build_areas():
     # utility area is pinned last.
     return [
         CharacterAIArea(),
+        ChatGPTArea(),
         CommandBotArea(),
         MimicArea(),
         StringReverserArea(),

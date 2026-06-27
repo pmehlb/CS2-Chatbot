@@ -1,6 +1,7 @@
 PyDirectInput~=1.0.4
 nicegui~=1.4.19
 PyCharacterAI~=2.2.50
+openai~=2.44  # ChatGPT area (AsyncOpenAI)
 httpx~=0.28
 numerize~=0.12
 vdf~=3.4

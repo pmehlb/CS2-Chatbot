@@ -189,7 +189,7 @@ def test_dadjoke_failure_returns_error():
         out = run(area.generate('!dadjoke', area.app))
     finally:
         commands._http_get_text = original
-    assert out == "dadjoke: couldn't fetch a joke right now"
+    assert out == "[DADJOKE] couldn't fetch a joke right now"
 
 
 def test_fact_success():
@@ -204,7 +204,7 @@ def test_fact_success():
         out = run(area.generate('!fact', area.app))
     finally:
         commands._http_get_json = original
-    assert out == 'fact: Honey never spoils.'
+    assert out == '[FACT] Honey never spoils.'
 
 
 def test_fact_failure_returns_error():
@@ -219,7 +219,187 @@ def test_fact_failure_returns_error():
         out = run(area.generate('!fact', area.app))
     finally:
         commands._http_get_json = original
-    assert out == "fact: couldn't fetch a fact right now"
+    assert out == "[FACT] couldn't fetch a fact right now"
+
+
+def test_quote_success_object_form():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'content': 'The unexamined life is not worth living.'}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!quote', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[QUOTE] The unexamined life is not worth living.'
+
+
+def test_quote_success_list_form():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return [{'content': 'Be kind.'}]
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!quote', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[QUOTE] Be kind.'
+
+
+def test_quote_failure_returns_error():
+    area = make_area()
+
+    async def boom(url, headers=None):
+        raise RuntimeError('network down')
+
+    original = commands._http_get_json
+    commands._http_get_json = boom
+    try:
+        out = run(area.generate('!quote', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == "[QUOTE] couldn't fetch a quote right now"
+
+
+def test_fortunecookie_success():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'slip': {'advice': 'Always be yourself.'}}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!fortunecookie', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[FORTUNE] Always be yourself.'
+
+
+def test_fortunecookie_failure_returns_error():
+    area = make_area()
+
+    async def boom(url, headers=None):
+        raise RuntimeError('network down')
+
+    original = commands._http_get_json
+    commands._http_get_json = boom
+    try:
+        out = run(area.generate('!fortunecookie', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == "[FORTUNE] couldn't fetch advice right now"
+
+
+def test_ticker_stock_success():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Global Quote': {'01. symbol': 'AAPL', '05. price': '195.1200',
+                                 '10. change percent': '1.2300%'}}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker AAPL', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[TICKER] AAPL $195.12 (+1.2300%)'
+
+
+def test_ticker_currency_success():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Realtime Currency Exchange Rate': {'5. Exchange Rate': '157.20000000'}}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker USD JPY', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[TICKER] USD/JPY 157.2000'
+
+
+def test_ticker_no_arg_returns_usage():
+    area = make_area()
+    out = run(area.generate('!ticker', area.app))
+    assert out == '[TICKER] usage !ticker <SYMBOL>  or  !ticker <FROM> <TO>'
+
+
+def test_ticker_invalid_symbol_returns_no_data():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Global Quote': {}}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker ZZZZ', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[TICKER] no data for ZZZZ'
+
+
+def test_ticker_rate_limit_note():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Note': 'Our standard API rate limit is 25 requests per day.'}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker AAPL', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[TICKER] rate limit reached, try later'
+
+
+def test_ticker_rate_limit_information():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Information': 'rate limited, please try later'}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker USD JPY', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == '[TICKER] rate limit reached, try later'
+
+
+def test_ticker_failure_returns_error():
+    area = make_area()
+
+    async def boom(url, headers=None):
+        raise RuntimeError('network down')
+
+    original = commands._http_get_json
+    commands._http_get_json = boom
+    try:
+        out = run(area.generate('!ticker AAPL', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == "[TICKER] couldn't fetch ticker data right now"
+
+
+def test_help_includes_new_commands_when_enabled():
+    area = make_area()
+    out = run(area.generate('!help', area.app))
+    assert '!quote' in out[1]
+    assert '!fortunecookie' in out[1]
+    assert '!ticker' in out[1]
 
 
 if __name__ == '__main__':

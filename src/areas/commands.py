@@ -8,6 +8,7 @@ rest are local.
 """
 import logging
 import random
+import urllib.parse
 from dataclasses import dataclass
 from typing import Awaitable, Callable, List, Optional, Union
 
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 HTTP_TIMEOUT = 5  # seconds for network commands
 # icanhazdadjoke asks API users to send a descriptive User-Agent.
 DADJOKE_UA = 'CS2-Chatbot (https://github.com/)'
+# AlphaVantage API key for !ticker (user-provided, in-source by request).
+# Free tier is rate-limited to ~25 requests/day; on limit the API returns a
+# JSON body with a 'Note'/'Information' key instead of data (see _cmd_ticker).
+ALPHAVANTAGE_KEY = 'JCFJ95WG36YQ7166'
 
 EIGHTBALL_ANSWERS = [
     'It is certain.', 'It is decidedly so.', 'Without a doubt.',
@@ -82,6 +87,11 @@ class CommandBotArea(ChatArea):
             Command('flip', '!flip', 'flip a coin', self._cmd_flip),
             Command('dadjoke', '!dadjoke', 'random dad joke', self._cmd_dadjoke),
             Command('fact', '!fact', 'random fact', self._cmd_fact),
+            Command('quote', '!quote', 'random quote', self._cmd_quote),
+            Command('fortunecookie', '!fortunecookie', 'fortune cookie advice',
+                    self._cmd_fortunecookie),
+            Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup',
+                    self._cmd_ticker),
         ]
         self.registry = {c.name: c for c in ordered}
 
@@ -156,16 +166,81 @@ class CommandBotArea(ChatArea):
             return text.strip()
         except Exception as e:
             logger.warning(f'dadjoke fetch failed: {e}')
-            return "dadjoke: couldn't fetch a joke right now"
+            return "[DADJOKE] couldn't fetch a joke right now"
 
     async def _cmd_fact(self, arg: str) -> Reply:
         try:
             data = await _http_get_json(
                 'https://uselessfacts.jsph.pl/api/v2/facts/random?language=en')
-            return 'fact: ' + (data.get('text') or '').strip()
+            return '[FACT] ' + (data.get('text') or '').strip()
         except Exception as e:
             logger.warning(f'fact fetch failed: {e}')
-            return "fact: couldn't fetch a fact right now"
+            return "[FACT] couldn't fetch a fact right now"
+
+    async def _cmd_quote(self, arg: str) -> Reply:
+        try:
+            data = await _http_get_json(
+                'https://api.quotable.io/quotes/random?maxLength=130')
+            # quotable may return a single object or a one-element array.
+            if isinstance(data, list):
+                data = data[0]
+            return '[QUOTE] ' + (data.get('content') or '').strip()
+        except Exception as e:
+            logger.warning(f'quote fetch failed: {e}')
+            return "[QUOTE] couldn't fetch a quote right now"
+
+    async def _cmd_fortunecookie(self, arg: str) -> Reply:
+        try:
+            data = await _http_get_json('https://api.adviceslip.com/advice')
+            # adviceslip serves text/html, but _http_get_json parses it anyway.
+            advice = (data.get('slip') or {}).get('advice') or ''
+            return '[FORTUNE] ' + advice.strip()
+        except Exception as e:
+            logger.warning(f'fortunecookie fetch failed: {e}')
+            return "[FORTUNE] couldn't fetch advice right now"
+
+    async def _cmd_ticker(self, arg: str) -> Reply:
+        # Only two AlphaVantage functions are supported: GLOBAL_QUOTE (one token)
+        # and CURRENCY_EXCHANGE_RATE (two tokens). Free tier is ~25 req/day; on
+        # rate-limit the API returns a 'Note'/'Information' key instead of data.
+        tokens = [t.upper() for t in arg.split()]
+        if not tokens:
+            return '[TICKER] usage !ticker <SYMBOL>  or  !ticker <FROM> <TO>'
+        try:
+            if len(tokens) == 1:
+                sym = tokens[0]
+                url = ('https://www.alphavantage.co/query?function=GLOBAL_QUOTE'
+                       f'&symbol={urllib.parse.quote(sym)}&apikey={ALPHAVANTAGE_KEY}')
+                data = await _http_get_json(url)
+                if self._alphavantage_rate_limited(data):
+                    return '[TICKER] rate limit reached, try later'
+                quote = data.get('Global Quote') or {}
+                if not quote:
+                    return f'[TICKER] no data for {sym}'
+                price = float(quote.get('05. price', 0))
+                pct = (quote.get('10. change percent') or '').strip().rstrip('%')
+                sign = '+' if not pct.startswith('-') else ''
+                return f'[TICKER] {sym} ${price:.2f} ({sign}{pct}%)'
+
+            # Two (or more) tokens: treat the first two as a currency pair.
+            frm, to = tokens[0], tokens[1]
+            url = ('https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE'
+                   f'&from_currency={urllib.parse.quote(frm)}'
+                   f'&to_currency={urllib.parse.quote(to)}&apikey={ALPHAVANTAGE_KEY}')
+            data = await _http_get_json(url)
+            if self._alphavantage_rate_limited(data):
+                return '[TICKER] rate limit reached, try later'
+            rate = float((data.get('Realtime Currency Exchange Rate') or {})
+                         .get('5. Exchange Rate', 0))
+            return f'[TICKER] {frm}/{to} {rate:.4f}'
+        except Exception as e:
+            logger.warning(f'ticker fetch failed: {e}')
+            return "[TICKER] couldn't fetch ticker data right now"
+
+    @staticmethod
+    def _alphavantage_rate_limited(data) -> bool:
+        # On rate-limit AlphaVantage returns a body keyed by 'Note'/'Information'.
+        return isinstance(data, dict) and ('Note' in data or 'Information' in data)
 
     # ------------------------------------------------------------------ helpers
 

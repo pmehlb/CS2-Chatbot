@@ -29,7 +29,7 @@ Defined as `AppState` defaults in `src/app_state.py` (a few are set in
 |------|-----------|---------|
 | `<CS2>/game/csgo/console.log` | read | CS2's console mirror (requires `-condebug`); source of incoming chat. |
 | `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` command CS2 executes when the bound key is pressed. |
-| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>" } }`. Created automatically if missing or invalid JSON. |
+| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` token is the `web-next-auth` cookie from character.ai and is required for name search. Created automatically if missing or invalid JSON. |
 | `cs2_chatbot_debug.log` | write | Verbose debug log, recreated each run (`logging` is configured at `DEBUG` level in `main.py`). |
 
 `<CS2>` is the CS2 install path discovered from the registry; the app computes
