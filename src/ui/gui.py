@@ -22,6 +22,7 @@ def build(app):
     app.auto_press = saved.get('auto_press', app.auto_press)
     app.cooldown_enabled = saved.get('cooldown_enabled', app.cooldown_enabled)
     app.cooldown_ms = saved.get('cooldown_ms', app.cooldown_ms)
+    app.attribute_speakers = saved.get('attribute_speakers', app.attribute_speakers)
     app.toggle_key = saved.get('toggle_key', app.toggle_key)
 
     theme = ui.dark_mode()
@@ -56,6 +57,8 @@ def build(app):
                 toggle_active = ToggleButton(icon='power_settings_new').classes('w-11 animate-pulse')
                 with toggle_active:
                     status_badge = ui.badge('OFF').props('floating').classes('bg-red rounded')
+                    ui.tooltip('Turn the bot on or off. You can also bind a toggle '
+                               'hotkey in Settings.')
 
                 exec_light = ui.icon('circle').classes('text-2xl').props('color=red')
                 with exec_light:
@@ -93,11 +96,19 @@ def build(app):
     ui.timer(0.1, poll_toggle)
 
 
+def _set_status_badge(badge, on):
+    """Recolour the floating power badge so on/off state reads at a glance:
+    green ON when running, red OFF when stopped (always visible, not hidden)."""
+    badge.text = 'ON' if on else 'OFF'
+    badge.classes(remove='bg-red bg-green')
+    badge.classes('bg-green' if on else 'bg-red')
+
+
 def _gate_power(app, new_state, status_badge):
     """Decide whether the bot may switch on. Returns the state to settle on."""
     if not new_state:
         app.powered_on = False
-        status_badge.set_visibility(True)
+        _set_status_badge(status_badge, False)
         notify_and_log('Chatbot has been disabled.', type='warning')
         return False
 
@@ -112,7 +123,7 @@ def _gate_power(app, new_state, status_badge):
         return False
 
     app.powered_on = True
-    status_badge.set_visibility(False)
+    _set_status_badge(status_badge, True)
     notify_and_log('Chatbot is now running!', type='positive', color='pink')
     return True
 

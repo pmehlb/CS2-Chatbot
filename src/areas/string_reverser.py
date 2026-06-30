@@ -9,7 +9,7 @@ import re
 
 from nicegui import ui
 
-from ui.ui_util import area_header
+from ui.ui_util import area_header, settings_card
 from .base import ChatArea
 
 
@@ -17,6 +17,7 @@ class StringReverserArea(ChatArea):
     key = 'reverse'
     label = 'Reverser'
     icon = 'swap_horiz'
+    attribute_speaker = False  # reverses the raw message; a prefix would become garbage
 
     def __init__(self):
         self.app = None
@@ -49,35 +50,36 @@ class StringReverserArea(ChatArea):
         self.censors = saved if isinstance(saved, list) else []
 
         area_header('String Reverser',
-                    'Reverses the chat message - find/replacing words first. '
+                    'Reverses the chat message — find/replacing words first. '
                     'Leave "Replace with" blank to delete the word.')
 
-        with ui.row().classes('items-center gap-2 w-full'):
-            word_input = ui.input('Word').classes('w-40')
-            repl_input = ui.input('Replace with').classes('w-40')
+        with settings_card('Censored words'):
+            with ui.row().classes('items-center gap-2 w-full'):
+                word_input = ui.input('Word').classes('w-40')
+                repl_input = ui.input('Replace with').classes('w-40')
 
-            def add():
-                word = (word_input.value or '').strip()
-                if not word:
-                    return
-                self.censors.append({'word': word, 'replacement': (repl_input.value or '').strip()})
-                self._save()
-                word_input.value = ''
-                repl_input.value = ''
-                self._refresh_list()
+                def add():
+                    word = (word_input.value or '').strip()
+                    if not word:
+                        return
+                    self.censors.append({'word': word, 'replacement': (repl_input.value or '').strip()})
+                    self._save()
+                    word_input.value = ''
+                    repl_input.value = ''
+                    self._refresh_list()
 
-            word_input.on('keydown.enter', add)
-            repl_input.on('keydown.enter', add)
-            ui.button(icon='add', on_click=add).props('rounded')
+                word_input.on('keydown.enter', add)
+                repl_input.on('keydown.enter', add)
+                ui.button(icon='add', on_click=add).props('rounded')
 
-        self.list_container = ui.column().classes('gap-1 w-full mt-3')
-        self._refresh_list()
+            self.list_container = ui.column().classes('gap-1 w-full')
+            self._refresh_list()
 
     def _refresh_list(self) -> None:
         self.list_container.clear()
         with self.list_container:
             if not self.censors:
-                ui.label('No censored words yet.').classes('text-italic opacity-60')
+                ui.label('No censored words yet.').classes('text-sm opacity-70')
                 return
             for i, entry in enumerate(self.censors):
                 shown = entry.get('replacement') or '(removed)'
