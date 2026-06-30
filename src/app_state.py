@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,12 @@ class AppState:
     cooldown_enabled: bool = False
     cooldown_ms: int = 3000
 
+    # When on, prefix each chat message fed to AI chatbots with the speaker's
+    # name ("[Name] said: message") so replies can track who said what. Only
+    # areas that opt in (ChatArea.attribute_speaker) get the prefix; the Command
+    # Bot and Reverser opt out so their parsing isn't broken. Disabled by default.
+    attribute_speakers: bool = False
+
     # Runtime flags read by the chat loop.
     powered_on: bool = False
     auto_press: bool = True             # press the bind key ourselves vs. let the user press it
@@ -82,6 +89,18 @@ class AppState:
     # loop adds names; the Settings panel toggles them and can clear the list.
     roster: dict = field(default_factory=dict)
     roster_version: int = 0             # bumped on add/clear so the GUI knows to redraw
+
+    # Game State Integration (GSI): CS2 POSTs game-state JSON to our /gsi route.
+    # gsi_token is the shared secret echoed in every POST (persisted in app
+    # settings, generated once). gsi_events is a small bounded queue of detected
+    # TiltEvents drained by the chat loop; gsi_prev is the last payload snapshot
+    # used for delta/edge detection. Same asyncio loop populates and drains, so
+    # no locking is needed.
+    gsi_token: str = ''
+    gsi_events: deque = field(default_factory=lambda: deque(maxlen=8))
+    gsi_prev: dict = field(default_factory=dict)
+    gsi_last_seen: float = 0.0          # time.monotonic() of the last valid GSI
+                                        # POST; drives the "receiving" tab light
 
     # Exec light: green once a response has been written to message.cfg,
     # red while a reply is being processed (generated/sent).

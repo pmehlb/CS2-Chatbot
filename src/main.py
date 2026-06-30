@@ -16,6 +16,7 @@ from nicegui import ui
 import core
 from app_state import AppState
 from areas import build_areas
+from system import gsi
 from system import winutil
 from system.hotkey import HotkeyManager
 from ui import gui
@@ -57,11 +58,16 @@ if __name__ == "__main__":
 
     gui.build(app)
 
+    # Game State Integration: persist/generate the auth token and mount the
+    # /gsi route on the same server the GUI runs on, so CS2 can POST game-state.
+    gsi.ensure_token(app)
+    gsi.register_gsi_route(app)
+
     # The chat loop: one tick every 0.1s reads new log lines and may reply.
     ui.timer(0.1, lambda: core.handle_tick(app), active=True)
 
     gui.run_startup_checks(app)
 
     logger.info("Starting CS2-Chatbot...")
-    ui.run(native=True, show=True, window_size=(840, 600), title='CS2 Chatbot', reload=False,
-           show_welcome_message=False)
+    ui.run(native=True, show=True, window_size=(840, 600), title='CS2 Chatbot',
+           reload=False, show_welcome_message=False, port=gsi.GSI_PORT)

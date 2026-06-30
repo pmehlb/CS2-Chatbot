@@ -7,10 +7,12 @@ the one selected on startup.
 """
 from .characterai import CharacterAIArea
 from .chatgpt import ChatGPTArea
+from .claude import ClaudeArea
 from .commands import CommandBotArea
 from .mimic import MimicArea
 from .settings import SettingsArea
 from .string_reverser import StringReverserArea
+from .tiltbot import TiltBotArea
 
 
 def build_areas():
@@ -19,6 +21,8 @@ def build_areas():
     return [
         CharacterAIArea(),
         ChatGPTArea(),
+        ClaudeArea(),
+        TiltBotArea(),
         CommandBotArea(),
         MimicArea(),
         StringReverserArea(),

@@ -91,7 +91,8 @@ def _channel_for(line: str):
 
 def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
     """Drain the tailer and return the newest answerable chat line as
-    ``(message, channel)`` where channel is 'all' or 'team'.
+    ``(message, channel, name)`` where channel is 'all' or 'team' and name is the
+    clean display name of the speaker.
 
     Always consumes all new lines so the byte offset stays current even when the
     bot is off. Every speaker (except us) is registered in ``app.roster`` with a
@@ -99,10 +100,11 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
     roster toggle is off are skipped, so we fall through to the newest message
     from someone still allowed.
 
-    Returns (None, None) if there's nothing to answer.
+    Returns (None, None, None) if there's nothing to answer.
     """
     latest = None
     latest_channel = None
+    latest_name = None
     for line in tailer.new_lines():
         channel, marker = _channel_for(line)
         if channel is None:
@@ -132,7 +134,21 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
         if app.roster[name]:
             latest = message
             latest_channel = channel
-    return latest, latest_channel
+            latest_name = name
+    return latest, latest_channel, latest_name
+
+
+def attribute_message(message: str, name, app, area) -> str:
+    """Optionally prefix ``message`` with the speaker's name for AI chatbots.
+
+    Returns the message unchanged unless the global ``attribute_speakers`` setting
+    is on, a ``name`` is known, and the active ``area`` opts in via its
+    ``attribute_speaker`` flag. Areas that parse or transform the raw text (the
+    Command Bot, Reverser and Mimic) opt out so the prefix can't break them.
+    """
+    if app.attribute_speakers and name and getattr(area, 'attribute_speaker', True):
+        return f'[{name}] said: {message}'
+    return message
 
 
 def chat_command_lines(reply, channel: str, char_limit: int):
@@ -229,15 +245,39 @@ def cooldown_active(app, now: float) -> bool:
     return app.cooldown_enabled and (now - app.last_reply_at) * 1000 < app.cooldown_ms
 
 
+def _next_event(app):
+    """Pop the newest pending GSI event and drop the rest (stale taunts are
+    worse than none -- an ace shout three rounds late just looks broken)."""
+    if not app.gsi_events:
+        return None
+    event = app.gsi_events.pop()   # newest
+    app.gsi_events.clear()
+    return event
+
+
+async def _react_to_event(app, area, event) -> None:
+    """Generate and send a taunt for a GSI event via the same path as chat."""
+    set_exec_state(app, False)
+    try:
+        logger.debug(f"[{area.key}] reacting to event: {event.kind}")
+        reply = await area.generate_event(event, app)
+    except Exception as e:
+        logger.error(f"Event handler '{area.key}' failed: {e}")
+        logger.error(traceback.format_exc())
+        notify_and_log(f'Failed to react to a game event: {e}', type='negative')
+        return
+    if not reply:
+        return
+    await send_to_game(reply, app, 'all')
+    app.last_reply_at = time.monotonic()
+
+
 async def handle_tick(app) -> None:
     """One timer tick: extract -> generate -> send."""
     # Always drain the tailer so the offset (and roster) stays current even while off.
-    message, channel = extract_latest_message(app.tailer, app.steam_nick, app)
+    message, channel, name = extract_latest_message(app.tailer, app.steam_nick, app)
 
     if not app.powered_on or app.active_area is None:
-        return
-
-    if message is None:
         return
 
     area = app.active_area
@@ -245,10 +285,25 @@ async def handle_tick(app) -> None:
     if not ready:
         return
 
-    # Global cooldown: stay silent until enough time has passed since the last
-    # reply, so we don't even spend a generation call while cooling down.
+    # Global cooldown applies to both event taunts and chat replies.
     if cooldown_active(app, time.monotonic()):
         return
+
+    # GSI game-event reactions take priority over chat: they're time-sensitive
+    # (an ace taunt is worthless several rounds later). Only areas that opt in
+    # (consumes_events) ever pop the queue.
+    if getattr(area, 'consumes_events', False):
+        event = _next_event(app)
+        if event is not None:
+            await _react_to_event(app, area, event)
+            return
+
+    if message is None:
+        return
+
+    # Optionally tag the message with who said it, so AI chatbots can track the
+    # speaker. Areas that parse/transform the raw text opt out (see helper).
+    message = attribute_message(message, name, app, area)
 
     # We're committing to generate + send a reply: exec light goes red until
     # the response lands in message.cfg.
