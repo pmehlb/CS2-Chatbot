@@ -13,6 +13,7 @@ class MimicArea(ChatArea):
     key = 'mimic'
     label = 'Mimic'
     icon = 'format_quote'
+    attribute_speaker = False  # echoes the raw message back; a prefix would be echoed too
 
     async def generate(self, message: str, app):
         return ''.join(c.upper() if random.randint(0, 1) else c.lower() for c in message)

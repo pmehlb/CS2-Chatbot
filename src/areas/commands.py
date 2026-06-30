@@ -72,6 +72,7 @@ class CommandBotArea(ChatArea):
     key = 'c2'
     label = 'C2'
     icon = 'terminal'
+    attribute_speaker = False  # commands match a leading '!', so never prefix the message
 
     def __init__(self):
         self.app = None

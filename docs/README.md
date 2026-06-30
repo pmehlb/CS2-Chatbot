@@ -2,9 +2,11 @@
 
 CS2-Chatbot is a **Windows desktop application that automatically replies to
 in-game Counter-Strike 2 chat messages**. It reads what other players type,
-generates a response with [Character.AI](https://character.ai/) (or echoes the
-message back in "mimic" mode), and types that response into CS2's all-chat —
-all on its own.
+generates a response with one of several pluggable behaviours — AI chat via
+[Character.AI](https://character.ai/), OpenAI, or Anthropic; a `!`-command bot;
+or the no-account *Mimic* / *String Reverser* modes — and types that response
+into CS2's all-chat, all on its own. A **Tilt Bot** area also reacts to your own
+live game events through CS2's official Game State Integration.
 
 It is a small modular Python app (under `src/`) — a thin `main.py` entrypoint
 plus focused modules (`system/winutil`, `app_state`, `core`, `ui/gui`,
@@ -59,7 +61,10 @@ Between those two steps it generates the reply via Character.AI. See
 - **Platform:** Windows only (uses the Win32 API, the Windows registry, and Steam/CS2 install paths).
 - **Language / runtime:** Python 3 (the CI built with Python 3.13).
 - **UI:** NiceGUI in `native=True` mode (a pywebview desktop window, 840×600).
-- **Response engine:** Character.AI via the unofficial `PyCharacterAI` library.
+- **Response engines:** Character.AI (`PyCharacterAI`), OpenAI, and Anthropic;
+  plus a `!`-command bot and no-account Mimic / String Reverser modes.
+- **Live events:** a Tilt Bot area driven by CS2 Game State Integration (a local
+  `/gsi` endpoint on the pinned port 8765).
 - **Input injection:** `pydirectinput` keypress + a bound CS2 config exec.
 - **Distribution:** A single windowed `.exe` produced by PyInstaller.
 

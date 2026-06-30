@@ -16,9 +16,19 @@ from openai import AsyncOpenAI
 
 from ui.ui_util import area_header, notify_and_log, settings_card
 from .base import ChatArea, TokenField
+from .event_prompts import event_to_prompt
 
 logger = logging.getLogger(__name__)
 
+# Selectable models -> friendly labels, shown in the dropdown. gpt-4o-mini is the
+# default (cheapest/fastest); gpt-4o is the most capable. Keep these as the bare
+# model-id strings the API expects.
+MODELS = {
+    'gpt-4o-mini': 'GPT-4o mini (fastest/cheapest)',
+    'gpt-4o': 'GPT-4o (most capable)',
+    'gpt-4.1': 'GPT-4.1',
+    'gpt-4.1-mini': 'GPT-4.1 mini',
+}
 DEFAULT_MODEL = 'gpt-4o-mini'
 
 # Replies must fit a single CS2 chat line, so the persona is told to be terse
@@ -29,8 +39,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "no markdown, no line breaks. Stay in character and keep it snappy."
 )
 
+# OpenAI temperature ranges 0.0–2.0 (1.0 is the API default). 0.8 gives a little
+# personality without going off the rails; lower is more focused and consistent.
+DEFAULT_TEMPERATURE = 0.8
+
 MAX_TOKENS = 150          # short replies, keeps within a CS2 chat line
-TEMPERATURE = 0.8         # a little personality without going off the rails
 MAX_HISTORY_MESSAGES = 20  # rolling window: 10 user/assistant exchanges
 
 TOKEN_HELP_MD = '''
@@ -55,7 +68,10 @@ class ChatGPTArea(ChatArea):
         self.api_key = ''                          # set via Settings > API Tokens
         self.model = DEFAULT_MODEL                  # persisted
         self.system_prompt = DEFAULT_SYSTEM_PROMPT  # persisted
+        self.temperature = DEFAULT_TEMPERATURE      # persisted
         self.history = []                           # runtime-only rolling history
+        self.react_to_events = False   # opt in to taunting your own GSI events
+        self.consumes_events = False   # instance flag the chat loop reads
 
         # Widget refs, populated in build_tab.
         self.model_input = None
@@ -89,7 +105,7 @@ class ChatGPTArea(ChatArea):
                 model=self.model,
                 messages=messages,
                 max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
+                temperature=self.temperature,
             )
             reply = (response.choices[0].message.content or '').strip()
             logger.debug(f"Received response: {reply}")
@@ -106,6 +122,12 @@ class ChatGPTArea(ChatArea):
             notify_and_log(f'Failed to get a response: {e}', type='negative')
             return None
 
+    async def generate_event(self, event, app):
+        """React to a GSI game event by routing a synthesized prompt through this
+        area's own persona (only called while this tab is active and the toggle
+        is on)."""
+        return await self.generate(event_to_prompt(event), app)
+
     # ------------------------------------------------------------------ tab UI
 
     def build_tab(self, app) -> None:
@@ -114,17 +136,28 @@ class ChatGPTArea(ChatArea):
         saved = app.load_area_settings(self.key)
         self.model = saved.get('model') or DEFAULT_MODEL
         self.system_prompt = saved.get('system_prompt') or DEFAULT_SYSTEM_PROMPT
+        temp = saved.get('temperature', DEFAULT_TEMPERATURE)
+        self.temperature = temp if isinstance(temp, (int, float)) else DEFAULT_TEMPERATURE
+        self.react_to_events = bool(saved.get('react_to_events', False))
+        self.consumes_events = self.react_to_events
 
         area_header('ChatGPT',
                     'Answer in-game messages with OpenAI. Set your API key in '
                     'Settings > API Tokens, then give the bot a persona below.')
 
         with settings_card('Persona'):
-            self.model_input = ui.input('Model', value=self.model,
-                                        on_change=lambda e: self._set_field('model', e.value)) \
+            self.model_input = ui.select(MODELS, value=self.model, label='Model',
+                                         on_change=lambda e: self._set_field('model', e.value)) \
                 .classes('w-full')
             with self.model_input:
-                ui.tooltip('Any OpenAI chat model id, e.g. gpt-4o-mini or gpt-4o.')
+                ui.tooltip('Which OpenAI model answers. gpt-4o-mini is the fastest and '
+                           'cheapest; gpt-4o is the most capable.')
+
+            with ui.row().classes('w-full items-center gap-3'):
+                ui.label('Temperature').classes('text-sm')
+                ui.slider(min=0, max=2, step=0.1, value=self.temperature,
+                          on_change=lambda e: self._set_field('temperature', e.value)) \
+                    .props('label-always').classes('flex-grow')
 
             self.system_prompt_input = ui.textarea(
                 'System prompt (first prompt)', value=self.system_prompt,
@@ -139,6 +172,13 @@ class ChatGPTArea(ChatArea):
             with clear_btn:
                 ui.tooltip('Forget the running conversation history (also reset on app restart).')
 
+            events_cb = ui.checkbox('Also react to my game events', value=self.react_to_events,
+                                    on_change=lambda e: self._set_react_to_events(e.value))
+            with events_cb:
+                ui.tooltip('When on, this bot also taunts about your own GSI events '
+                           '(multi-kills, MVPs, clutches) while its tab is active. '
+                           'Set up Game State Integration in Settings first.')
+
     # ------------------------------------------------------------------ helpers
 
     async def set_api_key(self, value):
@@ -150,11 +190,17 @@ class ChatGPTArea(ChatArea):
         self.client = AsyncOpenAI(api_key=self.api_key)
 
     def _set_field(self, name: str, value) -> None:
-        """Update a persisted field (model / system_prompt) and save it."""
-        setattr(self, name, value or '')
+        """Update a persisted field (model / system_prompt / temperature) and save
+        it. Non-string values (e.g. the temperature float) pass through."""
+        setattr(self, name, value if not isinstance(value, str) else (value or ''))
         data = self.app.load_area_settings(self.key)
         data[name] = getattr(self, name)
         self.app.save_area_settings(self.key, data)
+
+    def _set_react_to_events(self, value) -> None:
+        self.react_to_events = bool(value)
+        self.consumes_events = self.react_to_events
+        self._set_field('react_to_events', self.react_to_events)
 
     def _clear_history(self) -> None:
         self.history = []

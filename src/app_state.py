@@ -110,6 +110,8 @@ class AppState:
 
     # GUI handles set during gui.build (the Settings area reaches them via app).
     theme: object = None                # ui.dark_mode() handle for theme toggling
+    open_settings: object = None        # callable that switches to the Settings tab
+                                        # (e.g. Tilt Bot's "set up GSI" link)
 
     def _read_all(self) -> dict:
         try:
@@ -121,6 +123,14 @@ class AppState:
         except json.JSONDecodeError:
             logger.warning('Invalid settings JSON; ignoring existing file.')
             return {}
+
+    def area_by_key(self, key):
+        """Return the registered area with this ``key`` (e.g. 'claude'), or None.
+
+        Lets one area borrow another's behaviour -- e.g. Tilt Bot routing a
+        taunt through the configured Claude/ChatGPT/C.AI area.
+        """
+        return next((a for a in self.areas if getattr(a, 'key', None) == key), None)
 
     def load_area_settings(self, key: str) -> dict:
         """Return the saved settings dict for one area (empty dict if none)."""

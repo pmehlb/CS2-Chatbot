@@ -39,10 +39,11 @@ def test_registers_new_speakers_and_returns_latest():
         'some unrelated console spam',
     ])
 
-    msg, channel = core.extract_latest_message(tailer, 'Me', app)
+    msg, channel, name = core.extract_latest_message(tailer, 'Me', app)
 
     assert msg == 'hi there'
     assert channel == 'all'
+    assert name == 'Bob'
     assert list(app.roster) == ['Steve', 'Bob']
     assert app.roster == {'Steve': True, 'Bob': True}
     assert app.roster_version == 2
@@ -54,7 +55,7 @@ def test_skips_our_own_messages():
         f'{M}MyNick: this is me',
     ])
 
-    msg, channel = core.extract_latest_message(tailer, 'MyNick', app)
+    msg, channel, name = core.extract_latest_message(tailer, 'MyNick', app)
 
     assert msg is None
     assert app.roster == {}  # we never add ourselves
@@ -68,7 +69,7 @@ def test_ignored_speaker_falls_through_to_latest_allowed():
         f'{M}Bob: ignore me',
     ])
 
-    msg, channel = core.extract_latest_message(tailer, 'Me', app)
+    msg, channel, name = core.extract_latest_message(tailer, 'Me', app)
 
     assert msg == 'answer me'
     assert channel == 'all'
@@ -80,7 +81,7 @@ def test_returns_none_when_only_speaker_is_ignored():
     app = FakeApp({'Bob': False})
     tailer = FakeTailer([f'{M}Bob: nope'])
 
-    msg, channel = core.extract_latest_message(tailer, 'Me', app)
+    msg, channel, name = core.extract_latest_message(tailer, 'Me', app)
 
     assert msg is None
 
@@ -109,7 +110,7 @@ def test_real_log_cleans_names_and_strips_dead_suffix():
         f'06/25 06:31:32{M}gelatinous boob{LRM} [DEAD]: geegee',  # ours, last line
     ]
 
-    msg, channel = core.extract_latest_message(tailer=FakeTailer(lines),
+    msg, channel, name = core.extract_latest_message(tailer=FakeTailer(lines),
                                                 steam_nick='gelatinous boob', app=app)
 
     # Last allowed (non-self) message wins.
@@ -144,7 +145,7 @@ def test_team_chat_is_captured_and_rostered():
         f'06/25 06:17:35{M}slaab{LRM}: loop activated',
     ]
 
-    msg, channel = core.extract_latest_message(FakeTailer(lines), 'Me', app)
+    msg, channel, name = core.extract_latest_message(FakeTailer(lines), 'Me', app)
 
     # Newest allowed line is the [ALL] one from slaab.
     assert msg == 'loop activated'
@@ -156,11 +157,51 @@ def test_team_message_returns_team_channel():
     app = FakeApp()
     lines = [f'06/25 06:17:29  [CT] Babs{LRM}: rotate B']
 
-    msg, channel = core.extract_latest_message(FakeTailer(lines), 'Me', app)
+    msg, channel, name = core.extract_latest_message(FakeTailer(lines), 'Me', app)
 
     assert msg == 'rotate B'
     assert channel == 'team'
+    assert name == 'Babs'
     assert list(app.roster) == ['Babs']
+
+
+# --- attribute_message: optional "[Name] said:" prefix -----------------------
+
+class _AttribApp:
+    def __init__(self, on):
+        self.attribute_speakers = on
+
+
+class _Area:
+    def __init__(self, opts_in=True):
+        self.attribute_speaker = opts_in
+
+
+def test_attribute_message_prefixes_when_enabled_and_area_opts_in():
+    out = core.attribute_message('hello', 'Bob', _AttribApp(True), _Area(opts_in=True))
+    assert out == '[Bob] said: hello'
+
+
+def test_attribute_message_unchanged_when_disabled():
+    out = core.attribute_message('hello', 'Bob', _AttribApp(False), _Area(opts_in=True))
+    assert out == 'hello'
+
+
+def test_attribute_message_unchanged_when_area_opts_out():
+    # e.g. the Command Bot, whose "!ping" must stay at the start of the line.
+    out = core.attribute_message('!ping', 'Bob', _AttribApp(True), _Area(opts_in=False))
+    assert out == '!ping'
+
+
+def test_attribute_message_unchanged_without_a_name():
+    out = core.attribute_message('hello', None, _AttribApp(True), _Area(opts_in=True))
+    assert out == 'hello'
+
+
+def test_attribute_message_defaults_to_opt_in_when_flag_missing():
+    # An area with no attribute_speaker attribute is treated as opting in.
+    out = core.attribute_message('hello', 'Bob', _AttribApp(True), object())
+    assert out == '[Bob] said: hello'
 
 
 # --- chat_command_lines: str|list -> say/say_team cfg lines -------------------

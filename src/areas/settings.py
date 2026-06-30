@@ -5,9 +5,13 @@ It implements the same ChatArea contract as the chat behaviours and gets its
 tab the same way (registered in areas/__init__.py), but sets ``answerable =
 False`` so selecting its tab idles the bot instead of routing chat to it.
 """
+import os
+import time
+
 from nicegui import ui
 
-from ui.ui_util import settings_card
+from system import gsi
+from ui.ui_util import notify_and_log, settings_card
 from .base import ChatArea
 
 
@@ -81,6 +85,14 @@ class SettingsArea(ChatArea):
                     ui.tooltip('When on, the bot presses your bind key in-game. When off, the '
                                'bot only writes message.cfg — press it yourself (watch the exec light).')
 
+                attribute_switch = ui.switch('Attribute messages to speakers', value=app.attribute_speakers,
+                                             on_change=lambda e: set_flag('attribute_speakers', e.value)) \
+                    .props('dense')
+                with attribute_switch:
+                    ui.tooltip('When on, each chat message is fed to the AI chatbots as '
+                               '"[Name] said: message" so replies can track who said what. '
+                               'Does not affect the Command Bot or Reverser.')
+
                 self._keybind_row(app, set_flag)
 
             self._roster_section(app)
@@ -94,6 +106,52 @@ class SettingsArea(ChatArea):
                     with ui.button(icon='colorize').props('rounded'):
                         ui.color_picker(on_pick=lambda e: set_color(e.color))
                     ui.label('Accent color').classes('text-sm opacity-70')
+
+        # Game State Integration setup spans the full width below the card grid.
+        self._gsi_section(app)
+
+    def _gsi_section(self, app):
+        """Full-width Game State Integration setup card.
+
+        GSI is app-wide -- Tilt Bot and any AI area that opts into reacting to
+        game events use it -- so its one-time setup lives here in Settings rather
+        than on a single behaviour's tab.
+        """
+        with settings_card('Game State Integration (GSI)'):
+            ui.label('Lets the bot react to your live game events (multi-kills, MVPs, '
+                     'clutches). Install the config, then fully restart CS2 to activate.') \
+                .classes('text-sm opacity-70')
+            install_btn = ui.button('Install GSI config', icon='download',
+                                    on_click=lambda: self._install_gsi(app)).props('outline')
+            with install_btn:
+                ui.tooltip("Writes gamestate_integration_cs2chatbot.cfg into CS2's cfg folder.")
+
+            # Where the config goes and which local endpoint CS2 posts to, so the
+            # setup is transparent (and debuggable if a taunt never fires).
+            cfg_path = os.path.join(app.cs_path, 'cfg', gsi.GSI_CFG_NAME)
+            ui.label(f'Endpoint: 127.0.0.1:{gsi.GSI_PORT}/gsi').classes('text-xs opacity-60')
+            ui.label(f'Config: {cfg_path}').classes('text-xs opacity-60 break-all')
+
+            # Live connection light: confirms CS2 is actually POSTing to us, so
+            # setup success is visible without waiting for a taunt to fire.
+            with ui.row().classes('items-center gap-2'):
+                self._gsi_icon = ui.icon('circle').classes('text-sm').props('color=grey')
+                self._gsi_label = ui.label('Waiting for CS2…').classes('text-sm opacity-70')
+            ui.timer(1.0, lambda: self._refresh_gsi(app))
+
+    def _refresh_gsi(self, app):
+        """Poll GSI freshness and recolour the connection light (1s timer)."""
+        receiving = gsi.is_receiving(app, time.monotonic())
+        self._gsi_icon.props(f'color={"green" if receiving else "grey"}')
+        self._gsi_label.text = 'Receiving game data' if receiving else 'Waiting for CS2…'
+
+    def _install_gsi(self, app):
+        try:
+            path = gsi.write_gsi_cfg(app)
+            notify_and_log(f'Installed GSI config — restart CS2 to activate. ({path})',
+                           type='positive')
+        except OSError as e:
+            notify_and_log(f'Could not write GSI config: {e}', type='negative')
 
     def _keybind_row(self, app, set_flag):
         """Render the global enable/disable hotkey control inside the Logic card.

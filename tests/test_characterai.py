@@ -105,6 +105,47 @@ def test_status_reflects_selected_character():
     assert 'Naruto' in area.status_label.text
 
 
+# --- opt-in GSI event reactions ----------------------------------------------
+
+from areas.event_prompts import event_to_prompt  # noqa: E402
+from system.gsi import TiltEvent  # noqa: E402
+
+
+class _SettingsApp:
+    def __init__(self):
+        self._data = {}
+
+    def load_area_settings(self, key):
+        return dict(self._data)
+
+    def save_area_settings(self, key, data):
+        self._data = dict(data)
+
+
+def test_react_to_events_toggle_flips_consumes_and_persists():
+    area = CharacterAIArea()
+    area.app = _SettingsApp()
+    assert area.consumes_events is False
+    area._set_react_to_events(True)
+    assert area.consumes_events is True
+    assert area.app.load_area_settings('characterai')['react_to_events'] is True
+
+
+def test_generate_event_delegates_to_generate_with_event_prompt():
+    area = CharacterAIArea()
+    captured = []
+
+    async def fake_generate(message, app):
+        captured.append(message)
+        return 'cai taunt'
+
+    area.generate = fake_generate
+    ev = TiltEvent('ROUND_WIN')
+    out = run(area.generate_event(ev, app=None))
+    assert out == 'cai taunt'
+    assert captured == [event_to_prompt(ev)]
+
+
 if __name__ == '__main__':
     import traceback
 

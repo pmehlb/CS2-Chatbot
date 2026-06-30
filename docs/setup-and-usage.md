@@ -9,8 +9,10 @@ building from source see [building.md](building.md).
 - **Windows.** The app uses the Windows registry, the Win32 API, and Steam/CS2
   install paths — it does not run on macOS or Linux.
 - **Counter-Strike 2** installed via Steam.
-- **A [Character.AI](https://character.ai/) account**, used to obtain an API
-  token (only needed for normal AI replies — *Mimic mode* works without one).
+- **An API account** for whichever AI area you use — a
+  [Character.AI](https://character.ai/), OpenAI, or Anthropic key (only needed
+  for AI replies). *Tilt Bot*, *Command Bot*, *Mimic*, and *String Reverser*
+  work without one.
 - Running the app **as administrator** is recommended; some Win32 features may
   not work otherwise (the app warns you on startup if it isn't elevated).
 
@@ -43,6 +45,28 @@ of configuration:
 
 The app verifies the `-condebug` part for you on startup and shows a warning if
 it can't find it.
+
+## Optional: Tilt Bot setup (Game State Integration)
+
+The **Tilt Bot** area reacts to your *own* live game events (multi-kills, MVPs,
+round wins, low-HP survival, match point) using CS2's official, read-only Game
+State Integration. To enable it:
+
+1. Open **Settings** and find the **Game State Integration (GSI)** card.
+2. Click **Install GSI config**. This writes
+   `gamestate_integration_cs2chatbot.cfg` into CS2's `cfg/` folder, pointing the
+   game at the app's local `/gsi` endpoint.
+3. **Fully restart CS2** — GSI config is only read at launch.
+4. Watch the card's connection light: it turns green and reads **"Receiving game
+   data"** once CS2 starts POSTing game state to the app.
+5. On the **Tilt Bot** tab, under **Game events**, toggle which events to react
+   to (all on by default), pick a **Taunt source**, and optionally **Clap back at
+   incoming chat**. (Character.AI / ChatGPT / Claude can also opt in via "Also
+   react to my game events".)
+
+This is just as ban-safe as the chat read path — GSI is official and read-only.
+Note that during live matchmaking GSI exposes only *your own* player data, which
+is why Tilt Bot taunts about your play rather than named opponents.
 
 ## Getting your Character.AI token
 
@@ -84,8 +108,10 @@ The window has a vertical sidebar on the left and a content panel on the right.
 
 ### Sidebar
 
-- **One tab per AI behaviour** — *Character.AI*, *Mimic*, and *String Reverser*.
-  The tab you have open is the active behaviour; whatever it is replies to chat.
+- **One tab per behaviour** — *Character.AI*, *ChatGPT*, *Claude*, *Tilt Bot*,
+  *Command Bot*, *Mimic*, and *String Reverser*. The tab you have open is the
+  active behaviour; whatever it is replies to chat (and, for *Tilt Bot*, reacts
+  to game events).
 - **Settings tab** — appearance and chatbot toggles. Opening Settings selects no
   behaviour, so the bot does nothing while it's open.
 - **Power button** (`⏻`) — the master on/off toggle. It refuses to turn on until
@@ -107,6 +133,23 @@ The window has a vertical sidebar on the left and a content panel on the right.
   sources (searching by text uses the *Search* source).
 - A grid of character cards; click one to select it. Selecting a character
   creates a new chat session for the bot to use.
+
+### Tilt Bot tab
+
+Reacts to your own live game events via Game State Integration (set up in
+**Settings** — see [above](#optional-tilt-bot-setup-game-state-integration)).
+Cards:
+
+- **Game events** — a checkbox per event type (multi-kills, MVP, round win,
+  low-HP survival, match point, match win), all on by default; a **Taunt
+  source** dropdown; and an editable taunt-line pool.
+- **Chat** — a **Clap back at incoming chat** toggle, a **Clapback source**
+  dropdown, and an editable clapback-line pool.
+- **Requires Game State Integration** — a note with a button that jumps to the
+  Settings GSI card.
+
+Each source can be **Canned** (the editable built-in lines, no API key) or an AI
+brain (C.AI / ChatGPT / Claude).
 
 ### Mimic / String Reverser tabs
 

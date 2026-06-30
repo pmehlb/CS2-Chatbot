@@ -7,15 +7,13 @@ all-chat lines here. Lines are plain ASCII for CS2 font compatibility. v1 is
 canned (deterministic, no API key); AI-generated variety is a fast-follow.
 """
 import logging
-import os
 import random
-import time
 
 from nicegui import ui
 
-from system import gsi
 from ui.ui_util import area_header, notify_and_log, settings_card
 from .base import ChatArea
+from .event_prompts import event_to_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +63,22 @@ EVENT_LABELS = {
     'MATCH_WIN': 'Match win',
 }
 
+# Selectable response sources for the per-section dropdowns. 'canned' uses the
+# editable line pools; the others borrow that AI area's configured brain.
+SOURCE_LABELS = {
+    'canned': 'Canned (built-in lines)',
+    'characterai': 'Character.AI',
+    'chatgpt': 'ChatGPT',
+    'claude': 'Claude',
+}
+AI_SOURCES = ('characterai', 'chatgpt', 'claude')
+
+# Which {token}s each event kind's lines may use, shown as an editor hint.
+EVENT_TOKENS = {
+    'MULTI_KILL': '{kills}',
+    'LOW_HP_SURVIVAL': '{hp}',
+}
+
 
 class TiltBotArea(ChatArea):
     key = 'tiltbot'
@@ -77,31 +91,47 @@ class TiltBotArea(ChatArea):
         self.app = None
         self.enabled = {}        # event kind -> bool (absent = on by default)
         self.clapback = True     # also reply to incoming chat
-        self._status_icon = None   # GSI connection light, set in build_tab
-        self._status_label = None
+        self.clapback_source = 'canned'   # 'canned' | one of AI_SOURCES
+        self.event_source = 'canned'      # 'canned' | one of AI_SOURCES
+        # Editable line pools, defaulting to copies of the built-in defaults.
+        self.clapback_lines = list(CLAPBACKS)
+        self.event_lines = {k: list(CANNED[k]) for k in EVENT_LABELS}
         self._no_events_hint = None  # shown when every event is toggled off
 
     # ------------------------------------------------------------------ contract
 
     def is_ready(self):
-        # Canned mode needs no API key; the GSI cfg can't be verified from here,
-        # so the bot is always ready to react to whatever events arrive.
+        # Canned needs no key. If a *used* section points at an AI brain, that
+        # brain must be ready (blocks power-on with its own reason); switch the
+        # source back to Canned to run keyless.
+        for source in self._active_ai_sources():
+            brain = self.app.area_by_key(source) if self.app else None
+            if brain is None:
+                return False, f'{SOURCE_LABELS.get(source, source)} is unavailable.'
+            ok, reason = brain.is_ready()
+            if not ok:
+                return False, f'{SOURCE_LABELS.get(source, source)}: {reason}'
         return True, None
 
     async def generate(self, message, app):
         self.app = app
         if not self.clapback:
             return None
-        return random.choice(CLAPBACKS)
+        if self._is_ai(self.clapback_source):
+            reply = await self._ai_reply(self.clapback_source, message, app)
+            if reply:
+                return reply
+        return self._canned_clapback()
 
     async def generate_event(self, event, app):
         self.app = app
         if not self._enabled(event.kind):
             return None
-        pool = CANNED.get(event.kind)
-        if not pool:
-            return None
-        return random.choice(pool).format(**(event.data or {}))
+        if self._is_ai(self.event_source):
+            reply = await self._ai_reply(self.event_source, event_to_prompt(event), app)
+            if reply:
+                return reply
+        return self._canned_event(event)
 
     # ------------------------------------------------------------------ tab UI
 
@@ -111,12 +141,26 @@ class TiltBotArea(ChatArea):
         enabled = saved.get('enabled')
         self.enabled = dict(enabled) if isinstance(enabled, dict) else {}
         self.clapback = bool(saved.get('clapback', True))
+        self.clapback_source = saved.get('clapback_source') or 'canned'
+        self.event_source = saved.get('event_source') or 'canned'
+        self.clapback_lines = self._restore_pool(saved.get('clapback_lines'), CLAPBACKS)
+        saved_events = saved.get('event_lines') or {}
+        self.event_lines = {k: self._restore_pool(saved_events.get(k), CANNED[k])
+                            for k in EVENT_LABELS}
 
         area_header('Tilt Bot',
                     'Reacts to your live CS2 game events (multi-kills, MVPs, clutches) '
-                    'with taunts via Game State Integration, and optionally claps back at '
-                    'chat. Install the GSI config below, then fully restart CS2.')
+                    'with taunts, and optionally claps back at chat. Each section can use '
+                    'the built-in lines or borrow an AI brain (C.AI / ChatGPT / Claude). '
+                    'Game State Integration must be set up in Settings.')
 
+        # Game events | Chat as 50/50 columns; the GSI requirement note spans full width below.
+        with ui.grid(columns=2).classes('gap-4 w-full'):
+            self._game_events_card()
+            self._chat_card()
+        self._gsi_required_note()
+
+    def _game_events_card(self) -> None:
         with settings_card('Game events'):
             for kind, label in EVENT_LABELS.items():
                 ui.checkbox(label, value=self._enabled(kind),
@@ -127,58 +171,157 @@ class TiltBotArea(ChatArea):
                 .classes('text-sm text-orange')
             self._no_events_hint.set_visibility(not self._any_event_enabled())
 
+            source_select = ui.select(SOURCE_LABELS, value=self.event_source, label='Taunt source',
+                                      on_change=lambda e: self._set_source('event_source', e.value)) \
+                .classes('w-full')
+            with source_select:
+                ui.tooltip('Where event taunts come from: the built-in lines, or an AI brain '
+                           'you configured (it must have an API key set). AI falls back to a '
+                           'canned line if it errors.')
+
+            with ui.expansion('Edit lines', icon='edit').classes('w-full'):
+                self._event_line_editors()
+
             with ui.expansion('Preview taunts', icon='visibility').classes('w-full'):
                 for kind, label in EVENT_LABELS.items():
-                    example = CANNED[kind][0].format(kills=5, hp=7)
+                    pool = self.event_lines.get(kind) or CANNED[kind]
+                    example = self._safe_format(pool[0], {'kills': 5, 'hp': 7})
                     ui.label(f'{label}: "{example}"').classes('text-xs opacity-70')
 
+    @ui.refreshable
+    def _event_line_editors(self) -> None:
+        ui.label('One taunt per line. Tokens: {kills} (multi-kills), {hp} (low-HP survival).') \
+            .classes('text-xs opacity-70')
+        for kind, label in EVENT_LABELS.items():
+            hint = f'  {EVENT_TOKENS[kind]}' if kind in EVENT_TOKENS else ''
+            ui.textarea(label + hint, value='\n'.join(self.event_lines[kind]),
+                        on_change=lambda e, k=kind: self._set_event_lines(k, self._parse_lines(e.value))) \
+                .classes('w-full').props('autogrow')
+        ui.button('Restore default taunts', icon='restart_alt',
+                  on_click=self._restore_event_lines).props('outline')
+
+    def _chat_card(self) -> None:
         with settings_card('Chat'):
             ui.checkbox('Clap back at incoming chat', value=self.clapback,
                         on_change=lambda e: self._set_clapback(e.value))
 
-        with settings_card('Setup'):
-            ui.label('GSI sends your game state to this app on a local port. '
-                     'Install the config, then fully restart CS2 to activate.') \
+            source_select = ui.select(SOURCE_LABELS, value=self.clapback_source, label='Clapback source',
+                                      on_change=lambda e: self._set_source('clapback_source', e.value)) \
+                .classes('w-full')
+            with source_select:
+                ui.tooltip('Where clapbacks come from: the built-in lines, or an AI brain you '
+                           'configured. An AI brain replies in its own persona (and can name the '
+                           'speaker if "Attribute messages to speakers" is on in Settings).')
+
+            with ui.expansion('Edit clapback lines', icon='edit').classes('w-full'):
+                self._clapback_line_editor()
+
+    @ui.refreshable
+    def _clapback_line_editor(self) -> None:
+        ui.label('One clapback per line.').classes('text-xs opacity-70')
+        ui.textarea('Clapback lines', value='\n'.join(self.clapback_lines),
+                    on_change=lambda e: self._set_clapback_lines(self._parse_lines(e.value))) \
+            .classes('w-full').props('autogrow')
+        ui.button('Restore default clapbacks', icon='restart_alt',
+                  on_click=self._restore_clapback_lines).props('outline')
+
+    def _gsi_required_note(self) -> None:
+        """Full-width notice that GSI (set up in Settings) is required for the
+        event taunts to fire, with a button that jumps to the Settings tab."""
+        with settings_card('Requires Game State Integration'):
+            ui.label('Tilt Bot reacts to your live game events through CS2 Game State '
+                     'Integration. Set it up in Settings (install the config, then fully '
+                     'restart CS2) — otherwise these event taunts never fire.') \
                 .classes('text-sm opacity-70')
-            install_btn = ui.button('Install GSI config', icon='download',
-                                    on_click=self._install_gsi).props('outline')
-            with install_btn:
-                ui.tooltip("Writes gamestate_integration_cs2chatbot.cfg into CS2's cfg folder.")
+            btn = ui.button('Open GSI settings', icon='settings',
+                            on_click=self._open_settings).props('outline')
+            with btn:
+                ui.tooltip('Jump to Settings to install the GSI config and watch the live '
+                           'connection light.')
 
-            # Where the config goes and which local endpoint CS2 posts to, so the
-            # setup is transparent (and debuggable if a taunt never fires).
-            cfg_path = os.path.join(app.cs_path, 'cfg', gsi.GSI_CFG_NAME)
-            ui.label(f'Endpoint: 127.0.0.1:{gsi.GSI_PORT}/gsi').classes('text-xs opacity-60')
-            ui.label(f'Config: {cfg_path}').classes('text-xs opacity-60 break-all')
-
-            # Live connection light: confirms CS2 is actually POSTing to us, so
-            # setup success is visible without waiting for a taunt to fire.
-            with ui.row().classes('items-center gap-2'):
-                self._status_icon = ui.icon('circle').classes('text-sm').props('color=grey')
-                self._status_label = ui.label('Waiting for CS2…').classes('text-sm opacity-70')
-            ui.timer(1.0, self._refresh_status)
-
-    def _refresh_status(self) -> None:
-        """Poll the GSI freshness and recolour the connection light (1s timer)."""
-        receiving = gsi.is_receiving(self.app, time.monotonic())
-        self._status_icon.props(f'color={"green" if receiving else "grey"}')
-        self._status_label.text = 'Receiving game data' if receiving else 'Waiting for CS2…'
-
-    def _install_gsi(self) -> None:
-        try:
-            path = gsi.write_gsi_cfg(self.app)
-            notify_and_log(f'Installed GSI config — restart CS2 to activate. ({path})',
-                           type='positive')
-        except OSError as e:
-            notify_and_log(f'Could not write GSI config: {e}', type='negative')
+    def _open_settings(self) -> None:
+        if getattr(self.app, 'open_settings', None):
+            self.app.open_settings()
 
     # ------------------------------------------------------------------ helpers
 
     def _enabled(self, kind: str) -> bool:
         return self.enabled.get(kind, True)
 
+    @staticmethod
+    def _is_ai(source) -> bool:
+        return source in AI_SOURCES
+
+    def _active_ai_sources(self):
+        """The AI sources currently in use (so is_ready only gates on those)."""
+        sources = []
+        if self.clapback and self._is_ai(self.clapback_source):
+            sources.append(self.clapback_source)
+        if self._any_event_enabled() and self._is_ai(self.event_source):
+            sources.append(self.event_source)
+        return sources
+
+    async def _ai_reply(self, source, prompt, app):
+        """Borrow the brain named by ``source`` and ask it for a reply, or return
+        None (missing/not-ready brain, or any error) so the caller falls back to
+        a canned line -- an enabled event should never go un-taunted."""
+        brain = app.area_by_key(source) if app else None
+        if brain is None:
+            return None
+        ok, _ = brain.is_ready()
+        if not ok:
+            return None
+        try:
+            return await brain.generate(prompt, app)
+        except Exception as e:
+            logger.warning(f"Tilt Bot AI source '{source}' failed: {e}")
+            return None
+
+    def _canned_clapback(self):
+        return random.choice(self.clapback_lines or CLAPBACKS)
+
+    def _canned_event(self, event):
+        pool = self.event_lines.get(event.kind) or CANNED.get(event.kind)
+        if not pool:
+            return None
+        return self._safe_format(random.choice(pool), event.data or {})
+
+    @staticmethod
+    def _safe_format(line, data):
+        """Format a (user-editable) line, leaving bad/unknown tokens literal."""
+        try:
+            return line.format(**data)
+        except (KeyError, IndexError, ValueError):
+            return line
+
+    @staticmethod
+    def _parse_lines(text):
+        """Textarea body -> list of non-empty, stripped lines (one taunt each)."""
+        return [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
+
+    @staticmethod
+    def _restore_pool(saved, default):
+        """Load a saved pool, falling back to a copy of ``default`` when the
+        saved value is missing or empty (no silent empty pools)."""
+        if isinstance(saved, list):
+            cleaned = [str(s).strip() for s in saved if str(s).strip()]
+            return cleaned if cleaned else list(default)
+        return list(default)
+
     def _any_event_enabled(self) -> bool:
         return any(self._enabled(k) for k in EVENT_LABELS)
+
+    def _save(self) -> None:
+        data = self.app.load_area_settings(self.key)
+        data.update({
+            'enabled': self.enabled,
+            'clapback': self.clapback,
+            'clapback_source': self.clapback_source,
+            'event_source': self.event_source,
+            'clapback_lines': self.clapback_lines,
+            'event_lines': self.event_lines,
+        })
+        self.app.save_area_settings(self.key, data)
 
     def _set_enabled(self, kind: str, value) -> None:
         self.enabled[kind] = bool(value)
@@ -190,8 +333,26 @@ class TiltBotArea(ChatArea):
         self.clapback = bool(value)
         self._save()
 
-    def _save(self) -> None:
-        data = self.app.load_area_settings(self.key)
-        data['enabled'] = self.enabled
-        data['clapback'] = self.clapback
-        self.app.save_area_settings(self.key, data)
+    def _set_source(self, field: str, value) -> None:
+        setattr(self, field, value or 'canned')
+        self._save()
+
+    def _set_event_lines(self, kind: str, lines) -> None:
+        self.event_lines[kind] = lines
+        self._save()
+
+    def _set_clapback_lines(self, lines) -> None:
+        self.clapback_lines = lines
+        self._save()
+
+    def _restore_event_lines(self) -> None:
+        self.event_lines = {k: list(CANNED[k]) for k in EVENT_LABELS}
+        self._save()
+        self._event_line_editors.refresh()
+        notify_and_log('Default taunts restored.', type='positive')
+
+    def _restore_clapback_lines(self) -> None:
+        self.clapback_lines = list(CLAPBACKS)
+        self._save()
+        self._clapback_line_editor.refresh()
+        notify_and_log('Default clapbacks restored.', type='positive')

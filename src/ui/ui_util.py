@@ -68,7 +68,7 @@ def settings_card(title: str):
     Yields inside a ``gap-3`` column, so callers just add their controls and the
     spacing between them (and below the badge) is uniform across every card.
     """
-    with ui.card().tight().classes('shadow-sm shadow-black'):
+    with ui.card().tight().classes('shadow-sm shadow-black w-full'):
         with ui.card_section().classes('w-full'):
             with ui.column().classes('gap-3 w-full'):
                 ui.badge(title)

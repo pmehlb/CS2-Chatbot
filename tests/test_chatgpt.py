@@ -120,6 +120,43 @@ def test_set_api_key_builds_and_drops_client():
     assert area.client is None
 
 
+# --- opt-in GSI event reactions ----------------------------------------------
+
+from areas.event_prompts import event_to_prompt  # noqa: E402
+from system.gsi import TiltEvent  # noqa: E402
+
+
+class _SettingsApp:
+    def __init__(self):
+        self._data = {}
+
+    def load_area_settings(self, key):
+        return dict(self._data)
+
+    def save_area_settings(self, key, data):
+        self._data = dict(data)
+
+
+def test_react_to_events_toggle_flips_consumes_and_persists():
+    area = ChatGPTArea()
+    area.app = _SettingsApp()
+    assert area.consumes_events is False
+    area._set_react_to_events(True)
+    assert area.consumes_events is True
+    assert area.app.load_area_settings('chatgpt')['react_to_events'] is True
+    area._set_react_to_events(False)
+    assert area.consumes_events is False
+
+
+def test_generate_event_delegates_to_generate_with_event_prompt():
+    area = make_area(reply='ggez')
+    ev = TiltEvent('MVP')
+    out = run(area.generate_event(ev, app=None))
+    assert out == 'ggez'
+    assert area.completions.calls[0]['messages'][-1] == {
+        'role': 'user', 'content': event_to_prompt(ev)}
+
+
 if __name__ == '__main__':
     import traceback
 

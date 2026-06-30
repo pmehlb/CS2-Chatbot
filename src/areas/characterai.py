@@ -14,6 +14,7 @@ from PyCharacterAI import get_client
 
 from ui.ui_util import area_header, notify_and_log
 from .base import ChatArea, TokenField
+from .event_prompts import event_to_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,8 @@ class CharacterAIArea(ChatArea):
         self.current_char = None
         self.current_chat = None
         self.recents = []           # recently selected characters, persisted, newest first
+        self.react_to_events = False   # opt in to taunting your own GSI events
+        self.consumes_events = False   # instance flag the chat loop reads
 
         # Widget refs, populated in build_tab.
         self.character_input = None
@@ -131,6 +134,13 @@ class CharacterAIArea(ChatArea):
             notify_and_log(f'Failed to send message: {e}', type='negative')
             return None
 
+    async def generate_event(self, event, app):
+        """React to a GSI game event by sending a synthesized prompt to the
+        selected character (only called while this tab is active and the toggle
+        is on). With no character selected, generate() notifies and returns
+        None -- i.e. no taunt."""
+        return await self.generate(event_to_prompt(event), app)
+
     # ------------------------------------------------------------------ tab UI
 
     def build_tab(self, app) -> None:
@@ -138,6 +148,8 @@ class CharacterAIArea(ChatArea):
 
         saved = app.load_area_settings(self.key).get('recents')
         self.recents = saved if isinstance(saved, list) else []
+        self.react_to_events = bool(app.load_area_settings(self.key).get('react_to_events', False))
+        self.consumes_events = self.react_to_events
 
         area_header('Character.AI',
                     'Search for a character / paste a character ID, and select it.')
@@ -166,6 +178,14 @@ class CharacterAIArea(ChatArea):
         # Small status line: which character the bot is currently chatting as.
         self.status_label = ui.label().classes('text-sm opacity-70 mt-2 w-full')
         self._update_status()
+
+        events_cb = ui.checkbox('Also react to my game events', value=self.react_to_events,
+                                on_change=lambda e: self._set_react_to_events(e.value)) \
+            .classes('mt-2')
+        with events_cb:
+            ui.tooltip('When on, this character also taunts about your own GSI events '
+                       '(multi-kills, MVPs, clutches) while this tab is active. '
+                       'Set up Game State Integration in Settings first.')
 
         self.results = ui.row().classes('justify-center gap-3 mt-3 w-full')
         self._show_recents()
@@ -378,4 +398,11 @@ class CharacterAIArea(ChatArea):
 
         data = self.app.load_area_settings(self.key)
         data['recents'] = self.recents
+        self.app.save_area_settings(self.key, data)
+
+    def _set_react_to_events(self, value) -> None:
+        self.react_to_events = bool(value)
+        self.consumes_events = self.react_to_events
+        data = self.app.load_area_settings(self.key)
+        data['react_to_events'] = self.react_to_events
         self.app.save_area_settings(self.key, data)

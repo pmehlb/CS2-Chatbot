@@ -79,6 +79,14 @@ def build(app):
 
     app.exec_state_cb = set_exec_light
 
+    # Let an area jump the user to the Settings tab (e.g. Tilt Bot's GSI notice).
+    def open_settings():
+        settings = next((a for a in app.areas if a.key == 'settings'), None)
+        if settings is not None:
+            tabs.set_value(settings.label)
+
+    app.open_settings = open_settings
+
     # Global toggle hotkey. The keyboard library fires request_toggle on its own
     # thread, so it only flips a flag; poll_toggle (on the UI thread) clears it
     # and drives the exact same path as clicking the power button.

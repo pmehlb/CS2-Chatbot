@@ -103,6 +103,17 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
    - **Character.AI** sends the message to the selected character on the active
      chat session (`client.chat.send_message(...)`) and returns
      `answer.get_primary_candidate().text`.
+   - **ChatGPT** and **Claude** send the message to OpenAI / Anthropic with a
+     trash-talk persona and return the model's one-line reply. Each can also opt
+     into reacting to *your own* game events ("Also react to my game events"),
+     routing the event through the same persona (see
+     [Game State Integration](#game-state-integration)).
+   - **Tilt Bot** reacts to live game events and optionally claps back at chat.
+     Each section has a source dropdown: **Canned** uses its editable line pool,
+     or it can borrow a configured **C.AI / ChatGPT / Claude** brain — Tilt Bot
+     looks that area up via `app.area_by_key` and calls its `generate()` (event
+     taunts feed it an `event_prompts.event_to_prompt(...)` line), falling back
+     to a canned line if the brain isn't ready or errors.
    - **Mimic** returns the message with each character's case randomized
      (`tExT LiKe ThIs`); **String Reverser** returns it reversed.
    - **Command Bot (C2)** parses the message for a `!`-prefixed command (e.g.
@@ -170,6 +181,70 @@ token-based session:
 - **Resetting memory** — the reset button re-runs character selection, which
   creates a brand-new chat and therefore wipes the persona's conversational
   memory.
+
+## Game State Integration
+
+Reading chat is only one input channel. The **Tilt Bot** area reacts to *your
+own live game events* — multi-kills, MVPs, round wins, low-HP survival, match
+point — using **Game State Integration (GSI)**, CS2's official, read-only
+channel. It is just as ban-safe as the `console.log` read path: GSI never
+touches game memory; the game itself pushes state to the app.
+
+```
+   ┌──────────────────────────┐   HTTP POST game-state JSON    ┌──────────────────────────┐
+   │   Counter-Strike 2       │ ─────────────────────────────► │  POST /gsi               │
+   │   (GSI cfg installed)    │   (auth token in the body)     │  (NiceGUI/uvicorn server,│
+   └──────────▲───────────────┘                                │   pinned port 8765)      │
+              │                                                 └─────────────┬────────────┘
+              │ presses bound key 'p'                              system/gsi.py            │
+              │ via pydirectinput.write()                          handle_payload():        │
+              │ (same path as chat replies)                         • check auth token      │
+   ┌──────────┴───────────────┐                                    • detect_events(payload, │
+   │  send_to_game(reply,     │                                    │   prev) → [TiltEvent]   │
+   │   app, 'all')            │                                    • append to gsi_events    │
+   │  → message.cfg → say     │                                 └─────────────┬────────────┘
+   └──────────▲───────────────┘                                              │ queued (bounded deque)
+              │                                                               ▼
+              │ TiltBot.generate_event(event)                    ┌──────────────────────────┐
+              └──────────────────────────────────────────────────│ handle_tick() 10Hz loop  │
+                            taunt string                          │  pops the newest event,  │
+                                                                  │  drains stale ones       │
+                                                                  └──────────────────────────┘
+```
+
+Step by step:
+
+1. **CS2 POSTs game state.** Once the GSI config is installed and CS2 has been
+   restarted, the game POSTs JSON to `POST /gsi` — a route registered by
+   `system/gsi.py`'s `register_gsi_route()` on the same NiceGUI/uvicorn server
+   that serves the GUI. The server is pinned to a fixed port (**8765**) so the
+   config's `uri` always matches.
+
+2. **Authenticate and detect.** `handle_payload()` checks the payload's
+   `auth.token` against `app.gsi_token` (silently 200-OKing anything that
+   doesn't match, so CS2's HTTP client never errors), then calls
+   `detect_events(payload, prev)`. That pure function diffs the new payload
+   against the previous snapshot and emits edge-detected `TiltEvent`s (each fires
+   once per transition). Events are appended to `app.gsi_events`, a bounded
+   `deque` so stale events drop.
+
+3. **The chat loop consumes events.** The same 10Hz `handle_tick()` loop that
+   reads chat checks whether the active area `consumes_events`; if so (and the
+   bot is on and the cooldown is clear), it pops the **newest** pending event,
+   draining stale ones so the bot never taunts about a round long past, and calls
+   `area.generate_event(event, app)`. Any area can opt in: Tilt Bot always does,
+   and the Character.AI / ChatGPT / Claude areas do while their "Also react to my
+   game events" toggle is on, so your persona bot also gloats over your own aces.
+
+4. **Send it like any other reply.** The returned taunt goes out through the
+   exact same path as chat — `send_to_game(reply, app, 'all')` writes
+   `message.cfg` and presses the bound key while CS2 is foregrounded.
+
+**Limitation — your own data only.** During a live match, CS2's anti-cheat sends
+GSI **only the local player's** data (the richer `allplayers_*` block is sent
+only while spectating). So every event is derived from your own `player` node
+plus the shared `round`/`map` state, and Tilt Bot's taunts are about *your* own
+play rather than named opponents.
 
 ## Startup checks
 
