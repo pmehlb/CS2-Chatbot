@@ -5,7 +5,7 @@ The actual work lives in the focused modules:
   system/winutil.py  Win32 / registry / VDF helpers
   app_state.py       shared AppState passed around instead of globals
   core.py            LogTailer + the extract -> generate -> send chat loop
-  areas/             pluggable tabs: AI behaviours + the Settings utility area
+  areas/             pluggable tabs: AI behaviors + the Settings utility area
   ui/gui.py          the NiceGUI shell (splitter, tabs, power toggle, exec light)
 """
 import logging

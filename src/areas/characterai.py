@@ -1,4 +1,4 @@
-"""Character.AI area: the original chatbot behaviour, now self-contained.
+"""Character.AI area: the original chatbot behavior, now self-contained.
 
 Bundles the PyCharacterAI client, character search/selection, the reset-memory
 button and the send logic. The C.AI token is declared via tokens() and lives in

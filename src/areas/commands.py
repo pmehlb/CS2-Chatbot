@@ -262,10 +262,14 @@ class CommandBotArea(ChatArea):
                     'Settings > Chatbot.')
 
         with settings_card('Commands'):
-            for cmd in self.registry.values():
-                ui.checkbox(f'!{cmd.name} — {cmd.desc}',
-                            value=self._is_enabled(cmd.name),
-                            on_change=lambda e, n=cmd.name: self._set_enabled(n, e.value))
+            # Two-column grid so the checkbox list stays compact instead of one
+            # long single column. Tighter row gap, roomier column gap set inline
+            # (beats the grid's default gap deterministically).
+            with ui.grid(columns=2).classes('w-full').style('gap: 0.5rem 1.5rem'):
+                for cmd in self.registry.values():
+                    ui.checkbox(f'!{cmd.name} — {cmd.desc}',
+                                value=self._is_enabled(cmd.name),
+                                on_change=lambda e, n=cmd.name: self._set_enabled(n, e.value))
 
             help_btn = ui.button('Send help to chat', icon='campaign',
                                  on_click=self._send_help).props('outline').classes('mt-1')

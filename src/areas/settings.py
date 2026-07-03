@@ -1,7 +1,7 @@
 """The Settings area: appearance, chatbot timing, API tokens and the live
 player roster.
 
-It implements the same ChatArea contract as the chat behaviours and gets its
+It implements the same ChatArea contract as the chat behaviors and gets its
 tab the same way (registered in areas/__init__.py), but sets ``answerable =
 False`` so selecting its tab idles the bot instead of routing chat to it.
 """
@@ -19,7 +19,7 @@ class SettingsArea(ChatArea):
     key = 'settings'
     label = 'Settings'
     icon = 'settings'
-    answerable = False  # a utility tab, not a chat behaviour: it never replies
+    answerable = False  # a utility tab, not a chat behavior: it never replies
 
     async def generate(self, message: str, app):
         # Never reached while answerable is False; defined for safety/clarity.
@@ -115,7 +115,7 @@ class SettingsArea(ChatArea):
 
         GSI is app-wide -- Tilt Bot and any AI area that opts into reacting to
         game events use it -- so its one-time setup lives here in Settings rather
-        than on a single behaviour's tab.
+        than on a single behavior's tab.
         """
         with settings_card('Game State Integration (GSI)'):
             ui.label('Lets the bot react to your live game events (multi-kills, MVPs, '

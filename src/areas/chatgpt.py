@@ -1,6 +1,6 @@
 """ChatGPT area: answers in-game messages via OpenAI's Chat Completions API.
 
-A persona-driven chat behaviour. The settings tab carries an editable model
+A persona-driven chat behavior. The settings tab carries an editable model
 field and a "first prompt" (system prompt) text area that defines who the bot
 is; the API key lives in the shared Settings > API Tokens section like the C.AI
 token. A short rolling history gives replies some continuity within a session.

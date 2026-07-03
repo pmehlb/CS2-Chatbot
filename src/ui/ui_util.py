@@ -57,7 +57,7 @@ def area_header(title: str, description: str = '') -> None:
         if description:
             # 'area-desc' is targeted by CSS in gui.build() to zero the markdown
             # paragraph margins (which otherwise add ~1em above and below).
-            ui.markdown(description).classes('area-desc text-sm opacity-70 max-w-prose')
+            ui.markdown(description).classes('area-desc text-sm opacity-70 w-full')
         ui.separator().classes('mt-1 mb-2')
 
 

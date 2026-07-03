@@ -1,7 +1,7 @@
 # How It Works
 
 This is the core of the documentation: how CS2-Chatbot reads chat, decides what
-to say, and gets that text back into the game — none of which Counter-Strike 2
+to say, and gets that text back into the game, none of which Counter-Strike 2
 exposes through an official API.
 
 ## The central problem
@@ -15,7 +15,7 @@ using features the game already ships with:
 - **Sending** relies on CS2 config files: the app writes a `say "..."` command
   into a `.cfg` file and presses a key the user has bound to `exec` that file.
 
-Everything else — the GUI, Character.AI, the various safety checks — exists to
+Everything else (the GUI, Character.AI, the various safety checks) exists to
 wire those two channels together.
 
 ## End-to-end data flow
@@ -66,30 +66,30 @@ ui.timer(0.1, lambda: core.handle_tick(app), active=True)
 This calls `core.handle_tick(app)` ten times a second. On each tick:
 
 1. **Gate on the toggle.** If the power button isn't on (`app.powered_on` is
-   `False`) — or the Settings tab is open, so no behaviour is selected
-   (`app.active_area` is `None`) — the tick does nothing. The timer keeps firing,
-   but nothing is sent until you enable the bot on a behaviour's tab.
+   `False`), or the Settings tab is open so no behavior is selected
+   (`app.active_area` is `None`), the tick does nothing. The timer keeps firing,
+   but nothing is sent until you enable the bot on a behavior's tab.
 
 2. **Read new chat lines.** `core.LogTailer` reads only the bytes appended to
    `console.log` since the previous tick (no whole-file re-read), and the loop
-   takes the newest line containing a chat marker — `  [ALL] ` for all-chat, or
-   `  [T] ` / `  [CT] ` for team chat — and remembers which channel it came from. On startup the tailer skips everything already in the file, and if
+   takes the newest line containing a chat marker (`  [ALL] ` for all-chat, or
+   `  [T] ` / `  [CT] ` for team chat) and remembers which channel it came from. On startup the tailer skips everything already in the file, and if
    CS2 recreates the log (which it does each launch) it resets and keeps
    following.
 
 3. **Filter.** (Handled by `core.extract_latest_message`.)
    - If no new `[ALL]` line arrived this tick, there's nothing to do. The tailer
-     only ever yields genuinely new lines, so the old "same as last message"
-     guard is no longer needed.
-   - The line is split on the first `': '` — the part before is the sender, the
+     only ever yields genuinely new lines, so there's no need for a "same as last
+     message" guard.
+   - The line is split on the first `': '`: the part before is the sender, the
      part after is the full message (so a message that itself contains `': '` is
      kept intact).
    - The sender name is cleaned for the roster: CS2 appends a `U+200E`
      left-to-right mark right after the name (followed by status decoration like
-     ` [DEAD]`), so the name is cut at that mark — giving one stable entry per
+     ` [DEAD]`), so the name is cut at that mark, giving one stable entry per
      player whether they're alive or dead.
    - If the sender contains your own Steam nickname (read once at startup via
-     `get_last_steam_nick()`), it's skipped — this stops the bot replying to
+     `get_last_steam_nick()`), it's skipped; this stops the bot replying to
      itself in a loop.
    - Every other sender is added to the session **roster** (`app.roster`) the
      first time they speak, defaulting to "respond". The **Known Players** card
@@ -98,8 +98,12 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
      loop answers the newest message from a sender who's still allowed. The
      roster is in-memory only and resets each launch.
 
-4. **Generate a response.** The loop calls `active_area.generate(message, app)`
-   — whichever behaviour's tab is open:
+4. **Generate a response.** If **Attribute messages to speakers** (Settings) is
+   on, the message is first prefixed with `[Name] said: ` so the AI areas can
+   track who said what; the Command Bot, Mimic, and Reverser opt out (via the
+   area's `attribute_speaker = False`) so the prefix can't break their parsing.
+   The loop then calls `active_area.generate(message, app)`, whichever
+   behavior's tab is open:
    - **Character.AI** sends the message to the selected character on the active
      chat session (`client.chat.send_message(...)`) and returns
      `answer.get_primary_candidate().text`.
@@ -110,7 +114,7 @@ This calls `core.handle_tick(app)` ten times a second. On each tick:
      [Game State Integration](#game-state-integration)).
    - **Tilt Bot** reacts to live game events and optionally claps back at chat.
      Each section has a source dropdown: **Canned** uses its editable line pool,
-     or it can borrow a configured **C.AI / ChatGPT / Claude** brain — Tilt Bot
+     or it can borrow a configured **C.AI / ChatGPT / Claude** brain. Tilt Bot
      looks that area up via `app.area_by_key` and calls its `generate()` (event
      taunts feed it an `event_prompts.event_to_prompt(...)` line), falling back
      to a canned line if the brain isn't ready or errors.
@@ -165,30 +169,30 @@ one-time setup (`bind p "exec message.cfg"`, described in
 Character.AI is reached through the unofficial **PyCharacterAI** library, using a
 token-based session:
 
-- **Authentication** — `CharacterAIArea.set_token()` calls `get_client(token=...)`
+- **Authentication.** `CharacterAIArea.set_token()` calls `get_client(token=...)`
   and then `fetch_me()`. If the account comes back as `ANONYMOUS`, the token is
   treated as invalid. A valid token greets you by username and (optionally)
   persists to `chatbot_settings.json` (under the `characterai` key).
-- **Browsing characters** — `CharacterAIArea.search()` populates the
+- **Browsing characters.** `CharacterAIArea.search()` populates the
   Character.AI tab with cards. The dropdown maps to different library calls:
   - `Recommended` → `fetch_recommended_characters()`
   - `Trending` → `fetch_featured_characters()`
   - `Recent` → `fetch_recent_chats()` (wrapped into character-like objects)
   - `Search` → `search_characters(<query>)`
-- **Selecting a character** — `CharacterAIArea.select_character()` stores the
+- **Selecting a character.** `CharacterAIArea.select_character()` stores the
   character and calls `create_chat()` to start a fresh conversation. This is what
   the bot replies as.
-- **Resetting memory** — the reset button re-runs character selection, which
+- **Resetting memory.** The reset button re-runs character selection, which
   creates a brand-new chat and therefore wipes the persona's conversational
   memory.
 
 ## Game State Integration
 
 Reading chat is only one input channel. The **Tilt Bot** area reacts to *your
-own live game events* — multi-kills, MVPs, round wins, low-HP survival, match
-point — using **Game State Integration (GSI)**, CS2's official, read-only
+own live game events* (multi-kills, MVPs, round wins, low-HP survival, match
+point) using **Game State Integration (GSI)**, CS2's official, read-only
 channel. It is just as ban-safe as the `console.log` read path: GSI never
-touches game memory; the game itself pushes state to the app.
+touches game memory, and the game itself pushes state to the app.
 
 ```
    ┌──────────────────────────┐   HTTP POST game-state JSON    ┌──────────────────────────┐
@@ -215,7 +219,7 @@ touches game memory; the game itself pushes state to the app.
 Step by step:
 
 1. **CS2 POSTs game state.** Once the GSI config is installed and CS2 has been
-   restarted, the game POSTs JSON to `POST /gsi` — a route registered by
+   restarted, the game POSTs JSON to `POST /gsi`, a route registered by
    `system/gsi.py`'s `register_gsi_route()` on the same NiceGUI/uvicorn server
    that serves the GUI. The server is pinned to a fixed port (**8765**) so the
    config's `uri` always matches.
@@ -237,10 +241,10 @@ Step by step:
    game events" toggle is on, so your persona bot also gloats over your own aces.
 
 4. **Send it like any other reply.** The returned taunt goes out through the
-   exact same path as chat — `send_to_game(reply, app, 'all')` writes
+   exact same path as chat: `send_to_game(reply, app, 'all')` writes
    `message.cfg` and presses the bound key while CS2 is foregrounded.
 
-**Limitation — your own data only.** During a live match, CS2's anti-cheat sends
+**Limitation: your own data only.** During a live match, CS2's anti-cheat sends
 GSI **only the local player's** data (the richer `allplayers_*` block is sent
 only while spectating). So every event is derived from your own `player` node
 plus the shared `round`/`map` state, and Tilt Bot's taunts are about *your* own
@@ -251,13 +255,13 @@ play rather than named opponents.
 After the UI is built, `gui.run_startup_checks()` shows two non-blocking
 warnings:
 
-- **Admin check** (`is_running_as_admin()`) — warns (but doesn't block) if the
+- **Admin check** (`is_running_as_admin()`) warns (but doesn't block) if the
   app isn't elevated; some Win32 features may not work without admin rights.
-- **`-condebug` check** (`is_condebug_in_game_args()`) — parses Steam's
+- **`-condebug` check** (`is_condebug_in_game_args()`) parses Steam's
   `localconfig.vdf` to confirm `-condebug` is present in CS2's launch options,
   warning you if it isn't.
 
-Each area loads its own saved settings when its tab is built — the Character.AI
+Each area loads its own saved settings when its tab is built; the Character.AI
 area, for example, restores your token from `chatbot_settings.json`.
 
 ## Windows integration
@@ -279,13 +283,17 @@ All of this is why the project is Windows-only.
 
 These are worth knowing when reading the code or extending it:
 
-- **Humanized typing is slow.** The `0.2s × length` delay means a long chunk can
-  take tens of seconds before it's sent.
+- **Long replies post in bursts.** A reply over `chat_char_limit` (221)
+  characters is split into chunks, and the app sleeps `chat_delay` (0.5s) between
+  chunks while CS2 is focused, so a multi-chunk reply takes a couple of seconds
+  to finish posting. The optional "thinking" pause (`response_delay_ms` plus a
+  random `0..response_jitter_ms`, both `0`/off by default) adds a one-time wait
+  before the first chunk. There is no per-character typing delay.
 - **Single hard-coded bind key.** The bound key is `'p'` in code; changing it
   requires editing the source (and your CS2 bind to match).
 - **Foreground-only sending.** If CS2 isn't the focused window, the chunk is
-  written to the cfg but never sent — by design, to avoid leaking keystrokes
-  into other apps.
+  written to the cfg but never sent. This is by design, to avoid leaking
+  keystrokes into other apps.
 
 For exact constants and file paths referenced above, see
 [configuration.md](configuration.md).

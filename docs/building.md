@@ -25,7 +25,7 @@ The finished executable lands in the **`release`** folder as
 
 ## The build scripts
 
-There are two equivalent entry points — both ultimately invoke PyInstaller with
+There are two equivalent entry points; both ultimately invoke PyInstaller with
 the spec file.
 
 ### `build.ps1` (canonical, used by CI)
@@ -60,7 +60,7 @@ python build.py
 
 ## The PyInstaller spec file
 
-[`CS2-Chatbot.spec`](../packaging/CS2-Chatbot.spec) is **required** — it isn't optional
+[`CS2-Chatbot.spec`](../packaging/CS2-Chatbot.spec) is **required**; it isn't optional
 boilerplate. NiceGUI, pywebview, PyDirectInput, and PyCharacterAI all ship data
 files, binaries, and hidden imports that PyInstaller's automatic analysis misses,
 so the spec:
@@ -78,7 +78,7 @@ The spec resolves `src/main.py` and `app.ico` relative to its own location
 invoked from.
 
 > `.gitignore` normally excludes `*.spec`, but there is an explicit
-> `!packaging/CS2-Chatbot.spec` rule keeping this one tracked — do not delete it.
+> `!packaging/CS2-Chatbot.spec` rule keeping this one tracked, so do not delete it.
 
 ## Build output
 
@@ -92,7 +92,7 @@ invoked from.
 
 Releases were produced by a GitHub Actions workflow,
 `.github/workflows/build.yml`. (At the time of writing this workflow is **staged
-for deletion** in the working tree — `git status` shows it as deleted — so the
+for deletion** in the working tree (`git status` shows it as deleted), so the
 description below reflects its last committed form; revive or adapt it if you
 want automated releases again.)
 
@@ -108,11 +108,11 @@ The workflow:
   `CS2-Chatbot.exe` and `README.md`.
 - Tags containing `-` (e.g. `v1.4.0-beta`) were marked as **pre-releases**.
 
-So a normal release was: commit, tag `vX.Y.Z`, and push the tag — the pipeline
+So a normal release was: commit, tag `vX.Y.Z`, and push the tag, and the pipeline
 built and published the rest.
 
 ## Releasing a new version
 
-The app no longer has an in-app update check or a `current_version` constant, so
-cutting a release is just tagging and pushing: commit your changes, tag
-`vX.Y.Z`, and push the tag.
+The app has no in-app update check or `current_version` constant, so cutting a
+release is just tagging and pushing: commit your changes, tag `vX.Y.Z`, and push
+the tag.

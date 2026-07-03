@@ -17,6 +17,10 @@ Defined as `AppState` defaults in `src/app_state.py` (a few are set in
 | `chat_delay` | `0.5` | Seconds to wait between sending consecutive chunks. |
 | `response_delay_ms` | `0` | Fixed "thinking" pause (milliseconds) before the bot sends a reply. `0` disables it. Editable in Settings. |
 | `response_jitter_ms` | `0` | Random extra delay (milliseconds), between `0` and this value, added on top of `response_delay_ms` so the wait varies each time. Editable in Settings. |
+| `cooldown_enabled` | `False` | Whether the global reply cooldown is enforced. Editable in Settings. |
+| `cooldown_ms` | `3000` | Minimum milliseconds between any two replies (across all areas) while the cooldown is on. Editable in Settings. |
+| `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`; when off you press it yourself. Editable in Settings. |
+| `attribute_speakers` | `False` | When on, prefixes each message fed to the AI areas with `[Name] said: ` so replies can track the speaker. The Command Bot and Reverser opt out. Editable in Settings. |
 | timer interval | `0.1` | How often `core.handle_tick()` runs (10×/second), set in `main.py`. |
 | window size | `(840, 600)` | Native window dimensions, set in the final `ui.run(...)` in `main.py`. |
 | accent color | `'#ec4899'` (pink) | Default UI primary color (`ui.colors(primary=...)`). |
@@ -35,7 +39,7 @@ Defined as `AppState` defaults in `src/app_state.py` (a few are set in
 | `<CS2>/game/csgo/console.log` | read | CS2's console mirror (requires `-condebug`); source of incoming chat. |
 | `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` command CS2 executes when the bound key is pressed. |
 | `<CS2>/game/csgo/cfg/gamestate_integration_cs2chatbot.cfg` | write | The Game State Integration config, written by the Settings "Install GSI config" button (`gsi.write_gsi_cfg`). Points CS2's GSI `uri` at `http://127.0.0.1:8765/gsi` with the app's `gsi_token`. CS2 must be restarted to pick it up. |
-| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` token is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token` — a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated. Created automatically if missing or invalid JSON. |
+| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` token is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated. Created automatically if missing or invalid JSON. |
 | `cs2_chatbot_debug.log` | write | Verbose debug log, recreated each run (`logging` is configured at `DEBUG` level in `main.py`). |
 
 `<CS2>` is the CS2 install path discovered from the registry; the app computes
@@ -91,4 +95,4 @@ From [`requirements.txt`](../requirements.txt):
 | `PyDirectInput` | Simulates the keypress that triggers the CS2 config exec. |
 | `vdf` | Parses Steam's `localconfig.vdf`. |
 | `numerize` | Formats large interaction counts on character cards (e.g. `1.2M`). |
-| `pyinstaller` | Build-time only — packages the app into an `.exe`. |
+| `pyinstaller` | Build-time only; packages the app into an `.exe`. |

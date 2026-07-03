@@ -127,7 +127,7 @@ class AppState:
     def area_by_key(self, key):
         """Return the registered area with this ``key`` (e.g. 'claude'), or None.
 
-        Lets one area borrow another's behaviour -- e.g. Tilt Bot routing a
+        Lets one area borrow another's behavior -- e.g. Tilt Bot routing a
         taunt through the configured Claude/ChatGPT/C.AI area.
         """
         return next((a for a in self.areas if getattr(a, 'key', None) == key), None)

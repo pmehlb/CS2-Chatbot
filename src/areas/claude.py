@@ -167,16 +167,22 @@ class ClaudeArea(ChatArea):
                     'Settings > API Tokens, then pick a model and give the bot a persona below.')
 
         with settings_card('Persona'):
-            self.model_input = ui.select(MODELS, value=self.model, label='Model',
-                                         on_change=lambda e: self._set_model(e.value)) \
-                .classes('w-full')
-            with self.model_input:
-                ui.tooltip('Which Claude model answers. Opus is most capable; Haiku is the '
-                           'fastest and cheapest.')
+            # Model and Effort share one row, each half the width. Effort applies
+            # only to some models, so its cell is refreshable and re-renders on
+            # model change; the model select beside it stays put.
+            with ui.row().classes('w-full items-center gap-3 flex-nowrap'):
+                self.model_input = ui.select(MODELS, value=self.model, label='Model',
+                                             on_change=lambda e: self._set_model(e.value)) \
+                    .classes('flex-1')
+                with self.model_input:
+                    ui.tooltip('Which Claude model answers. Opus is most capable; Haiku is the '
+                               'fastest and cheapest.')
+                with ui.element('div').classes('flex-1'):
+                    self._effort_control()
 
-            # Effort and temperature apply only to some models, so this row is
-            # refreshable and re-renders (enabling/disabling controls) on model change.
-            self._tuning_row()
+            # Temperature also applies only to some models; own full-width row,
+            # refreshable so it enables/disables on model change.
+            self._temperature_row()
 
             self.system_prompt_input = ui.textarea(
                 'System prompt (first prompt)', value=self.system_prompt,
@@ -222,27 +228,31 @@ class ClaudeArea(ChatArea):
         return kwargs
 
     @ui.refreshable
-    def _tuning_row(self) -> None:
-        """Render the effort selector and temperature slider for the current model.
-
-        Each control is shown only when the chosen model supports it; otherwise a
-        disabled placeholder explains why. Re-rendered on model change.
+    def _effort_control(self) -> None:
+        """Render the effort selector for the current model, or a disabled
+        placeholder when effort doesn't apply. Sits in the 50/50 model row and
+        fills its half; re-rendered on model change.
         """
         caps = MODEL_CAPS.get(self.model, {})
         efforts = caps.get('efforts', [])
-        with ui.row().classes('w-full items-center gap-3'):
-            if efforts:
-                value = self.effort if self.effort in efforts else efforts[0]
-                effort_select = ui.select(efforts, value=value, label='Effort',
-                                          on_change=lambda e: self._set_field('effort', e.value)) \
-                    .classes('flex-grow')
-                with effort_select:
-                    ui.tooltip('How hard the model reasons and how many tokens it spends. '
-                               'Lower is faster and cheaper — good for one-line replies.')
-            else:
-                ui.input(label='Effort', value='Not supported by this model') \
-                    .props('readonly disable').classes('flex-grow')
+        if efforts:
+            value = self.effort if self.effort in efforts else efforts[0]
+            effort_select = ui.select(efforts, value=value, label='Effort',
+                                      on_change=lambda e: self._set_field('effort', e.value)) \
+                .classes('w-full')
+            with effort_select:
+                ui.tooltip('How hard the model reasons and how many tokens it spends. '
+                           'Lower is faster and cheaper — good for one-line replies.')
+        else:
+            ui.input(label='Effort', value='Not supported by this model') \
+                .props('readonly disable').classes('w-full')
 
+    @ui.refreshable
+    def _temperature_row(self) -> None:
+        """Render the temperature slider for the current model, or a disabled note
+        when it doesn't apply. Own full-width row; re-rendered on model change.
+        """
+        caps = MODEL_CAPS.get(self.model, {})
         with ui.row().classes('w-full items-center gap-3 q-mt-sm'):
             ui.label('Temperature').classes('text-sm')
             if caps.get('temperature'):
@@ -257,7 +267,8 @@ class ClaudeArea(ChatArea):
         re-render the tuning controls so they match the new model's capabilities."""
         self._set_field('model', value)
         self._sanitize_effort()
-        self._tuning_row.refresh()
+        self._effort_control.refresh()
+        self._temperature_row.refresh()
 
     def _sanitize_effort(self) -> None:
         """Snap the stored effort to a level the current model supports, so a

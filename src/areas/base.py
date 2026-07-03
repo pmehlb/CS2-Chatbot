@@ -5,7 +5,7 @@ An area is a self-contained module that bundles three things:
   * a response handler (generate)
   * a readiness check used by the power toggle (is_ready)
 
-Add a new behaviour by subclassing ChatArea in a new file under areas/ and
+Add a new behavior by subclassing ChatArea in a new file under areas/ and
 registering it in areas/__init__.py -- nothing else needs to change.
 """
 from dataclasses import dataclass
