@@ -118,3 +118,20 @@ Full documentation lives in **[`docs/`](docs/README.md)**:
 [configuration](docs/configuration.md) ·
 [code reference](docs/code-reference.md) ·
 [building](docs/building.md)
+
+## License & credits
+
+CS2-Chatbot is free software, licensed under the **[GNU General Public License
+v3.0](LICENSE)** (GPL-3.0).
+
+It is a fork of the original
+**[CS2-Chatbot](https://github.com/skel-sys/CS2-Chatbot)** by **skel (SkelV7)**
+and contributors — SmalltimeTommie, Saumitra Topinkatti, and Matt Borle — which
+is also GPL-3.0.
+
+**Significant changes in this fork:** restructured the original single-file app
+into a modular `core` / `gui` / `areas` layout; added the ChatGPT, Claude,
+Command Bot (C2), and GSI-driven Tilt Bot areas plus cross-area composition; and
+reworked the Settings tab. Per the terms of the GPL, the full license text is
+retained in [`LICENSE`](LICENSE) and this project remains licensed under
+GPL-3.0.
