@@ -218,7 +218,10 @@ $RECYCLE.BIN/
 ### Application specific ###
 # Chat bot debug logs
 cs2_chatbot_debug.log
+# Local settings + backups (may contain API tokens — never commit)
 chatbot_settings.json
+chatbot_settings.json.bak
+*.bak
 
 # PyInstaller build artifacts
 # Keep our build spec file - it's required for proper dependency inclusion
