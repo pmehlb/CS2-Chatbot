@@ -1,5 +1,7 @@
 .impeccable/
 .idea/
+# Local-only planning docs (superpowers plans/specs) — kept out of the public repo
+docs/superpowers/
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,virtualenv,windows
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,virtualenv,windows
