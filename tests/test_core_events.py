@@ -47,6 +47,7 @@ class FakeApp:
         self.last_reply_at = 0.0
         self.can_exec = False
         self.exec_state_cb = None
+        self.rules = []
         self.sent = []
 
 

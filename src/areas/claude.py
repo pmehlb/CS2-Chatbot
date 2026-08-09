@@ -20,26 +20,50 @@ from .event_prompts import event_to_prompt
 
 logger = logging.getLogger(__name__)
 
-# Selectable models -> friendly labels, shown in the dropdown. Opus 4.8 is the
+# Selectable models -> friendly labels, shown in the dropdown. Opus 5 is the
 # default (most capable); Haiku is the cheapest/fastest if you want snappier,
-# lower-cost replies. Keep these as the bare model-id strings the API expects.
+# lower-cost replies. Keep these as the bare model-id strings the API expects
+# (no date suffixes).
 MODELS = {
-    'claude-opus-4-8': 'Claude Opus 4.8 (most capable)',
+    'claude-opus-5': 'Claude Opus 5 (most capable)',
+    'claude-opus-4-8': 'Claude Opus 4.8',
     'claude-opus-4-7': 'Claude Opus 4.7',
-    'claude-sonnet-4-6': 'Claude Sonnet 4.6 (balanced)',
+    'claude-sonnet-5': 'Claude Sonnet 5 (balanced)',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
     'claude-haiku-4-5': 'Claude Haiku 4.5 (fastest)',
 }
-DEFAULT_MODEL = 'claude-opus-4-8'
+DEFAULT_MODEL = 'claude-opus-5'
 
-# Per-model tuning capabilities. The Opus 4.8/4.7 models reject sampling params
-# (temperature returns a 400), while the effort parameter errors on Haiku. Effort
-# levels also differ — "xhigh" is Opus-only. We only send a control to models that
-# accept it, and the UI disables controls that don't apply to the chosen model.
+# Per-model tuning capabilities. Three things differ across the lineup, and each
+# one is a 400 (or a mangled reply) if we get it wrong:
+#
+#   temperature  The Opus 5/4.8/4.7 and Sonnet 5 models reject sampling params.
+#   efforts      Which effort levels the model accepts -- "xhigh" doesn't exist
+#                on Sonnet 4.6, and effort errors outright on Haiku.
+#   thinks_by_default
+#                Opus 5 and Sonnet 5 think unless told not to, and MAX_TOKENS
+#                caps thinking *plus* reply text -- left alone, a 150-token
+#                budget gets spent reasoning and the chat line comes back
+#                truncated. We send thinking: disabled for those two (see
+#                _tuning_kwargs); the older models don't think unless asked, so
+#                they need no such flag.
+#
+# Opus 5 only accepts disabled thinking at effort "high" or below, so its effort
+# list stops there -- which suits this area anyway: xhigh/max would burn seconds
+# and tokens deliberating over a one-line taunt.
 MODEL_CAPS = {
-    'claude-opus-4-8':   {'temperature': False, 'efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
-    'claude-opus-4-7':   {'temperature': False, 'efforts': ['low', 'medium', 'high', 'xhigh', 'max']},
-    'claude-sonnet-4-6': {'temperature': True,  'efforts': ['low', 'medium', 'high', 'max']},
-    'claude-haiku-4-5':  {'temperature': True,  'efforts': []},
+    'claude-opus-5':     {'temperature': False, 'efforts': ['low', 'medium', 'high'],
+                          'thinks_by_default': True},
+    'claude-opus-4-8':   {'temperature': False, 'efforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+                          'thinks_by_default': False},
+    'claude-opus-4-7':   {'temperature': False, 'efforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+                          'thinks_by_default': False},
+    'claude-sonnet-5':   {'temperature': False, 'efforts': ['low', 'medium', 'high', 'xhigh', 'max'],
+                          'thinks_by_default': True},
+    'claude-sonnet-4-6': {'temperature': True,  'efforts': ['low', 'medium', 'high', 'max'],
+                          'thinks_by_default': False},
+    'claude-haiku-4-5':  {'temperature': True,  'efforts': [],
+                          'thinks_by_default': False},
 }
 
 # Anthropic temperature ranges 0.0–1.0 (1.0 is the API default). Effort defaults
@@ -51,14 +75,17 @@ DEFAULT_EFFORT = 'low'
 # Replies must fit a single CS2 chat line, so the persona is told to be terse
 # and the request caps tokens; the send layer still chunks anything too long.
 # The "one short line" instruction also keeps Opus from spilling reasoning into
-# the visible reply when thinking is off.
+# the visible reply when thinking is off, and the closing tag instruction stops
+# the stray internal XML that the newer models occasionally emit in that mode.
+# (Phrase it generically -- telling a model not to think makes leakage worse.)
 DEFAULT_SYSTEM_PROMPT = (
     "You are a player in a Counter-Strike 2 match, you're better than everyone else, "
     "and they need to know it - owning the opponents, beating them, and trash talking "
     "the whole time. Reply casually, and always attempt to infuriate the opponent - "
     "it's a long-term strategy. Feel free to curse, be aggressive, do your best to "
     "intimidate and get in their heads. Reply with one line where possible, multiple if "
-    "appropriate. No emoji, markdown, or unicode/ascii art."
+    "appropriate. No emoji, markdown, or unicode/ascii art. Do not include internal or "
+    "system XML tags in your response."
 )
 
 MAX_TOKENS = 150           # short replies, keeps within a CS2 chat line
@@ -216,8 +243,13 @@ class ClaudeArea(ChatArea):
 
     def _tuning_kwargs(self) -> dict:
         """Build the messages.create kwargs for tuning params the current model
-        accepts. Temperature 400s on Opus 4.8/4.7; effort errors on Haiku. Thinking
-        stays off for snappy replies — effort still tunes token spend where supported.
+        accepts (see MODEL_CAPS for what differs and why).
+
+        Thinking stays off across the board so replies land fast and fit one chat
+        line — effort still tunes token spend where the model supports it. On the
+        models that think by default that means saying so explicitly; on the older
+        ones, omitting the parameter already means no thinking, and sending
+        'disabled' to a model that predates the option would only risk a 400.
         """
         caps = MODEL_CAPS.get(self.model, {})
         kwargs = {}
@@ -225,6 +257,8 @@ class ClaudeArea(ChatArea):
             kwargs['temperature'] = self.temperature
         if self.effort in caps.get('efforts', []):
             kwargs['output_config'] = {'effort': self.effort}
+        if caps.get('thinks_by_default'):
+            kwargs['thinking'] = {'type': 'disabled'}
         return kwargs
 
     @ui.refreshable

@@ -51,6 +51,9 @@ you have open is the active bot.
 - Adjustable timing so replies don't read like a script/macro: a response delay with
   jitter, a reply cooldown, optional speaker attribution, and a hotkey to switch
   it on and off.
+- Command labels let a bot steer its own reply. Teach it a label like
+  `([SILENT])`, point that label at an action in Settings, and it can choose to
+  sit a message out or drop in a canned line mid-sentence.
 - One `.exe`, built with PyInstaller. Nothing to install.
 
 ---
@@ -113,8 +116,9 @@ More on each group:
 
 - **Settings.** Everything the areas share: how fast, how often, and to whom the bot
   replies, your API tokens (each area reads the one it needs), the theme and
-  accent colour, the global on/off hotkey, and the **Install GSI config** button
-  with its connection light.
+  accent colour, the global on/off hotkey, the **Command Rules** list that maps
+  `([LABEL])` strings a bot writes onto actions, and the **Install GSI config**
+  button with its connection light.
 
   <p align="center">
     <img src="docs/assets/tab-settings.png" alt="Settings tab" width="500">

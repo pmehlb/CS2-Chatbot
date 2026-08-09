@@ -63,6 +63,12 @@ class AppState:
     # Bot and Reverser opt out so their parsing isn't broken. Disabled by default.
     attribute_speakers: bool = False
 
+    # Command labels a bot may write into its own reply -- e.g. ([SILENT]) --
+    # pointed at what the app should do with them. Each rule is
+    # {'label': str, 'action': 'silent'|'say', 'text': str}, edited in
+    # Settings > Command Rules and applied to every area by the chat loop.
+    rules: list = field(default_factory=list)
+
     # Runtime flags read by the chat loop.
     powered_on: bool = False
     auto_press: bool = True             # press the bind key ourselves vs. let the user press it

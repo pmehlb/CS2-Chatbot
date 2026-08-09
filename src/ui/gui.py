@@ -25,6 +25,11 @@ def build(app):
     app.attribute_speakers = saved.get('attribute_speakers', app.attribute_speakers)
     app.toggle_key = saved.get('toggle_key', app.toggle_key)
 
+    # Command rules are a list, so a hand-edited settings file could hand us
+    # anything; fall back to none rather than letting the chat loop trip over it.
+    saved_rules = saved.get('rules')
+    app.rules = saved_rules if isinstance(saved_rules, list) else []
+
     theme = ui.dark_mode()
     theme.enable() if saved.get('dark_theme', True) else theme.disable()
     app.theme = theme  # the Settings area toggles this via app.theme

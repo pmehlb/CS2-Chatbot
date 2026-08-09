@@ -158,8 +158,9 @@ reversed. Open either tab and hit power; no token required.
 
 ### Settings tab
 
-A 2-column grid of cards: **Logic** | **Known Players** on the top row, **API
-Tokens** | **Appearance** below.
+A 2-column grid of cards — **Logic** | **Known Players** on the top row, **API
+Tokens** | **Appearance** below — over the full-width **Command Rules** and
+**Game State Integration** cards.
 
 - **Logic.** Bot behavior and timing:
   - **Respond Delay** and **Respond Jitter** (ms, side by side): a fixed
@@ -186,6 +187,18 @@ Tokens** | **Appearance** below.
   token); only shown when at least one area needs a token.
 - **Appearance.** A *Dark Theme* switch and a primary-color picker (the default
   accent is pink, `#ec4899`).
+- **Command Rules.** Lets a bot control its own reply by writing a label like
+  `([SILENT])` into it. Type the label, pick what it should do — **Stay silent**
+  drops the whole reply, **Say this** swaps the label for your text and keeps the
+  rest of the sentence — and click **+**. Brackets are optional and case doesn't
+  matter, so `SILENT`, `[SILENT]` and `([SILENT])` are one rule. Labels you
+  haven't defined are sent to chat as written, so a typo is visible rather than
+  silent. The rules apply to every area and are saved between launches.
+
+  A bot only uses a label if it knows the label exists: open **Prompt snippet**,
+  hit **Copy**, and paste it into that area's system prompt (or a Character.AI
+  persona). With `SILENT` → stay silent, a persona told "reply `([SILENT])` when
+  you have nothing worth saying" can now sit a message out.
 
 ## Typical session
 

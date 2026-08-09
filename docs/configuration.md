@@ -1,17 +1,15 @@
 # Configuration Reference
 
-A quick reference for the tunable constants, the files the app touches, and the
-system locations it reads. Most of these are fields on `AppState`
-(`src/app_state.py`); a few are set in `src/main.py` or `src/ui/gui.py`.
+Beyond what you can change on the Settings tab, this is what the code exposes:
+the tunable constants, the files the app touches, and the system locations it
+reads. Most of these are fields on `AppState` (`src/app_state.py`); a few are set
+in `src/main.py` or `src/ui/gui.py`.
 
 ## Tunable constants
 
-Defined as `AppState` defaults in `src/app_state.py` (a few are set in
-`src/main.py` / `src/ui/gui.py`).
-
 | Constant | Value | Meaning |
 |----------|-------|---------|
-| `settings_file` | `chatbot_settings.json` next to the executable | Where settings are persisted: each area's settings (e.g. the Character.AI token) plus cross-cutting app settings (theme, primary color, typing flags) under an `app` key. Path is absolute (resolved next to the `.exe`, or the project dir when run from source), so persistence doesn't depend on the working directory. |
+| `settings_file` | `chatbot_settings.json` next to the executable | Where settings are persisted: each area's settings (e.g. the Character.AI token) plus cross-cutting app settings (theme, primary color, timing flags) under an `app` key. Path is absolute (resolved next to the `.exe`, or the project dir when run from source), so persistence doesn't depend on the working directory. |
 | `bind_key` | `'p'` | The key the app simulates; **must match** your CS2 `bind <key> "exec message.cfg"`. |
 | `chat_char_limit` | `221` | Max characters per chat chunk (222 was observed being cut off). Long replies are split into pieces of this size. |
 | `chat_delay` | `0.5` | Seconds to wait between sending consecutive chunks. |
@@ -19,9 +17,11 @@ Defined as `AppState` defaults in `src/app_state.py` (a few are set in
 | `response_jitter_ms` | `0` | Random extra delay (milliseconds), between `0` and this value, added on top of `response_delay_ms` so the wait varies each time. Editable in Settings. |
 | `cooldown_enabled` | `False` | Whether the global reply cooldown is enforced. Editable in Settings. |
 | `cooldown_ms` | `3000` | Minimum milliseconds between any two replies (across all areas) while the cooldown is on. Editable in Settings. |
-| `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`; when off you press it yourself. Editable in Settings. |
-| `attribute_speakers` | `False` | When on, prefixes each message fed to the AI areas with `[Name] said: ` so replies can track the speaker. The Command Bot and Reverser opt out. Editable in Settings. |
-| timer interval | `0.1` | How often `core.handle_tick()` runs (10×/second), set in `main.py`. |
+| `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`; when off you press it yourself (watch the exec light). Editable in Settings. |
+| `attribute_speakers` | `False` | When on, prefixes each message fed to the AI areas with `[Name] said: ` so replies can track the speaker. The Command Bot, Mimic, and Reverser opt out. Editable in Settings. |
+| `toggle_key` | `''` (unset) | Global hotkey that toggles the bot on/off, even while CS2 is focused. Recorded and cleared in Settings; persisted. |
+| `rules` | `[]` (none) | Command-label rules applied to every area's reply, edited in Settings > Command Rules and persisted. Each entry is `{"label": "SILENT", "action": "silent"\|"say", "text": "..."}`; see [how-it-works.md](how-it-works.md#command-labels). |
+| timer interval | `0.1` | How often `core.handle_tick()` runs (10x/second), set in `main.py`. |
 | window size | `(840, 600)` | Native window dimensions, set in the final `ui.run(...)` in `main.py`. |
 | accent color | `'#ec4899'` (pink) | Default UI primary color (`ui.colors(primary=...)`). |
 | `GSI_PORT` | `8765` | Pinned local port (`system/gsi.py`) that serves **both** the GUI and the `POST /gsi` Game State Integration endpoint. The GSI cfg's `uri` points here, so it must match. |
@@ -37,9 +37,9 @@ Defined as `AppState` defaults in `src/app_state.py` (a few are set in
 | Path | Direction | Purpose |
 |------|-----------|---------|
 | `<CS2>/game/csgo/console.log` | read | CS2's console mirror (requires `-condebug`); source of incoming chat. |
-| `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` command CS2 executes when the bound key is pressed. |
+| `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` (or `say_team "<chunk>"`) command CS2 executes when the bound key is pressed. |
 | `<CS2>/game/csgo/cfg/gamestate_integration_cs2chatbot.cfg` | write | The Game State Integration config, written by the Settings "Install GSI config" button (`gsi.write_gsi_cfg`). Points CS2's GSI `uri` at `http://127.0.0.1:8765/gsi` with the app's `gsi_token`. CS2 must be restarted to pick it up. |
-| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` token is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated. Created automatically if missing or invalid JSON. |
+| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` value is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated, and `rules`, the command-label list. Created automatically if missing or invalid JSON. |
 | `cs2_chatbot_debug.log` | write | Verbose debug log, recreated each run (`logging` is configured at `DEBUG` level in `main.py`). |
 
 `<CS2>` is the CS2 install path discovered from the registry; the app computes
@@ -71,9 +71,11 @@ file.
 
 | Endpoint | Used by | Purpose |
 |----------|---------|---------|
-| Character.AI (via `PyCharacterAI`) | `CharacterAIArea` in `areas/characterai.py` (`set_token` / `search` / `select_character` / `generate`) | Authentication, character browsing, chat session creation, and message generation. |
-| OpenAI API | `ChatGPTArea` in `areas/chatgpt.py` | Generates ChatGPT replies (needs an OpenAI API key). |
+| Character.AI (via `PyCharacterAI`) | `CharacterAIArea` in `areas/characterai.py` | Authentication, character browsing, chat session creation, and message generation. |
+| OpenAI API (via `openai`) | `ChatGPTArea` in `areas/chatgpt.py` | Generates ChatGPT replies (needs an OpenAI API key). |
 | Anthropic Messages API (via `anthropic`) | `ClaudeArea` in `areas/claude.py` | Generates Claude replies (needs an Anthropic API key). |
+| Free keyless web APIs (icanhazdadjoke, uselessfacts, quotable, adviceslip) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, and `!fortunecookie`. |
+| AlphaVantage | `CommandBotArea` (`!ticker`) | Stock quote / currency rate. Uses an in-source free-tier key (rate-limited to ~25 requests/day). |
 
 ## Local endpoints
 
@@ -89,10 +91,14 @@ From [`requirements.txt`](../requirements.txt):
 
 | Package | Role |
 |---------|------|
-| `PyCharacterAI` | Unofficial Character.AI client (auth, characters, chat). |
-| `nicegui` | The GUI framework. |
-| `pywebview` | Renders NiceGUI as a native desktop window (`native=True`). |
 | `PyDirectInput` | Simulates the keypress that triggers the CS2 config exec. |
-| `vdf` | Parses Steam's `localconfig.vdf`. |
+| `nicegui` | The GUI framework (also serves the `/gsi` route via its FastAPI app). |
+| `PyCharacterAI` | Unofficial Character.AI client (auth, characters, chat). |
+| `openai` | OpenAI client for the ChatGPT area (`AsyncOpenAI`). |
+| `anthropic` | Anthropic client for the Claude area (`AsyncAnthropic`). |
+| `httpx` | HTTP client for the Command Bot's web-backed commands. |
 | `numerize` | Formats large interaction counts on character cards (e.g. `1.2M`). |
+| `vdf` | Parses Steam's `localconfig.vdf`. |
+| `pywebview` | Renders NiceGUI as a native desktop window (`native=True`). |
+| `keyboard` | Registers the global hotkey that toggles the bot on/off. |
 | `pyinstaller` | Build-time only; packages the app into an `.exe`. |

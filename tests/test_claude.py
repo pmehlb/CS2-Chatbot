@@ -171,6 +171,60 @@ def test_temperature_zero_is_sent():
     assert kwargs == {'temperature': 0.0}
 
 
+def test_opus_5_disables_thinking_and_sends_effort():
+    # Opus 5 thinks unless told not to, and MAX_TOKENS caps thinking + reply
+    # together — without this the chat line comes back truncated.
+    area = ClaudeArea()
+    area.model = 'claude-opus-5'
+    area.temperature = 0.5
+    area.effort = 'high'
+    assert area._tuning_kwargs() == {'output_config': {'effort': 'high'},
+                                     'thinking': {'type': 'disabled'}}
+
+
+def test_sonnet_5_disables_thinking_and_accepts_xhigh():
+    area = ClaudeArea()
+    area.model = 'claude-sonnet-5'
+    area.temperature = 0.5          # rejected on Sonnet 5
+    area.effort = 'xhigh'
+    assert area._tuning_kwargs() == {'output_config': {'effort': 'xhigh'},
+                                     'thinking': {'type': 'disabled'}}
+
+
+def test_opus_5_effort_stops_at_high():
+    # Disabled thinking is only accepted up to "high" on Opus 5, so xhigh/max
+    # must never reach the API alongside it.
+    efforts = claude.MODEL_CAPS['claude-opus-5']['efforts']
+    assert 'xhigh' not in efforts and 'max' not in efforts
+
+    area = ClaudeArea()
+    area.model = 'claude-opus-5'
+    area.effort = 'xhigh'           # carried over from another model
+    assert 'output_config' not in area._tuning_kwargs()
+
+
+def test_older_models_never_send_thinking():
+    # Omitting the parameter already means no thinking on these; sending
+    # 'disabled' to a model that predates the option risks a 400.
+    for model in ('claude-opus-4-8', 'claude-opus-4-7',
+                  'claude-sonnet-4-6', 'claude-haiku-4-5'):
+        area = ClaudeArea()
+        area.model = model
+        area.effort = 'low'
+        assert 'thinking' not in area._tuning_kwargs(), model
+
+
+def test_every_selectable_model_has_capabilities():
+    # A model in the dropdown with no MODEL_CAPS entry would silently send no
+    # tuning params at all — and, worse, no thinking:disabled where it's needed.
+    assert set(claude.MODELS) == set(claude.MODEL_CAPS)
+    assert claude.DEFAULT_MODEL in claude.MODELS
+
+
+def test_default_effort_is_valid_for_the_default_model():
+    assert claude.DEFAULT_EFFORT in claude.MODEL_CAPS[claude.DEFAULT_MODEL]['efforts']
+
+
 def test_sanitize_effort_snaps_invalid_level_to_default():
     area = ClaudeArea()
     area.app = _FakeApp()

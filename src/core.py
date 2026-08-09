@@ -13,6 +13,7 @@ import traceback
 
 import pydirectinput
 
+import rules
 from system.winutil import get_foreground_window_title
 from ui.ui_util import notify_and_log
 
@@ -266,6 +267,9 @@ async def _react_to_event(app, area, event) -> None:
         logger.error(traceback.format_exc())
         notify_and_log(f'Failed to react to a game event: {e}', type='negative')
         return
+
+    # Event taunts go through the same command-label pass as chat replies.
+    reply = rules.apply_rules(reply, app.rules)
     if not reply:
         return
     await send_to_game(reply, app, 'all')
@@ -317,6 +321,11 @@ async def handle_tick(app) -> None:
         logger.error(traceback.format_exc())
         notify_and_log(f'Failed to generate a reply: {e}', type='negative')
         return
+
+    # Command labels the bot wrote into its own reply (e.g. "([SILENT])") are
+    # resolved here, before anything is typed: a silencing rule returns None and
+    # falls into the guard below, so no keystrokes and no cooldown are spent.
+    reply = rules.apply_rules(reply, app.rules)
 
     if not reply:
         return
