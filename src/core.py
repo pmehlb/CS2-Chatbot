@@ -5,6 +5,7 @@ Knows nothing about any specific AI provider or any widget -- it reads
 everything it needs from AppState and calls ``app.active_area.generate(...)``.
 """
 import asyncio
+import codecs
 import logging
 import os
 import random
@@ -36,12 +37,20 @@ class LogTailer:
     ``console.log`` on launch: if the file shrinks below the stored offset we
     reset to the start. A partially-written final line is buffered and not
     yielded until its newline arrives.
+
+    Decoding is incremental for the same reason. We poll ten times a second
+    while CS2 flushes whenever it likes, so a read routinely stops in the
+    middle of a multi-byte UTF-8 character -- most often the U+200E that ends
+    every chat name. Decoding each chunk on its own would turn those split
+    bytes into U+FFFD and destroy the name delimiter, so the incremental
+    decoder holds them back until the next read completes the character.
     """
 
     def __init__(self, path: str):
         self.path = path
         self.offset = 0
         self._buffer = ''
+        self._decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
 
     def seek_to_end(self) -> None:
         """Skip whatever is already in the file (don't replay old chat)."""
@@ -49,7 +58,17 @@ class LogTailer:
             self.offset = os.path.getsize(self.path)
         except OSError:
             self.offset = 0
+        self._reset_read_state()
+
+    def _reset_read_state(self) -> None:
+        """Drop the partial line and any held-back partial character.
+
+        Called whenever the next read won't continue from where the last one
+        stopped (seek_to_end, or CS2 recreating the file), so leftovers from
+        the old position can't be glued onto the new one.
+        """
         self._buffer = ''
+        self._decoder.reset()
 
     def new_lines(self):
         """Yield each complete line appended since the previous call."""
@@ -60,7 +79,7 @@ class LogTailer:
 
         if size < self.offset:  # rotation / truncation -> start over
             self.offset = 0
-            self._buffer = ''
+            self._reset_read_state()
 
         if size == self.offset:
             return  # nothing new
@@ -73,7 +92,7 @@ class LogTailer:
         except OSError:
             return
 
-        text = self._buffer + data.decode('utf-8', errors='replace')
+        text = self._buffer + self._decoder.decode(data)
         *complete, self._buffer = text.split('\n')
         for line in complete:
             yield line.rstrip('\r')
