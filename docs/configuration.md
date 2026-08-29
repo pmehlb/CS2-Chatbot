@@ -17,9 +17,11 @@ in `src/main.py` or `src/ui/gui.py`.
 | `response_jitter_ms` | `0` | Random extra delay (milliseconds), between `0` and this value, added on top of `response_delay_ms` so the wait varies each time. Editable in Settings. |
 | `cooldown_enabled` | `False` | Whether the global reply cooldown is enforced. Editable in Settings. |
 | `cooldown_ms` | `3000` | Minimum milliseconds between any two replies (across all areas) while the cooldown is on. Editable in Settings. |
-| `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`; when off you press it yourself (watch the exec light). Editable in Settings. |
+| `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`. When off (**Human Control**) the app writes the whole reply at once and presses no key. The exec light then means "ready to fire". It goes red again when your message reaches chat. Editable in Settings. |
+| `steam_nick` | read from Steam | Your in-game name. The app uses it to skip your own messages, and to spot a sent reply under Human Control. The registry gives the startup value. The person icon in Settings > Known Players saves a name that wins over it. |
 | `attribute_speakers` | `False` | When on, prefixes each message fed to the AI areas with `[Name] said: ` so replies can track the speaker. The Command Bot, Mimic, and Reverser opt out. Editable in Settings. |
 | `toggle_key` | `''` (unset) | Global hotkey that toggles the bot on/off, even while CS2 is focused. Recorded and cleared in Settings; persisted. |
+| `debug_log` | `False` (off) | The only control over the log file. While it is off, the app writes no log file at all. Turn it on in Settings > Debug Log and the file starts at once, without a restart. Persisted. |
 | `rules` | `[]` (none) | Command-label rules applied to every area's reply, edited in Settings > Command Rules and persisted. Each entry is `{"label": "SILENT", "action": "silent"\|"say", "text": "..."}`; see [how-it-works.md](how-it-works.md#command-labels). |
 | timer interval | `0.1` | How often `core.handle_tick()` runs (10x/second), set in `main.py`. |
 | window size | `(840, 600)` | Native window dimensions, set in the final `ui.run(...)` in `main.py`. |
@@ -40,13 +42,15 @@ in `src/main.py` or `src/ui/gui.py`.
 | `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` (or `say_team "<chunk>"`) command CS2 executes when the bound key is pressed. |
 | `<CS2>/game/csgo/cfg/gamestate_integration_cs2chatbot.cfg` | write | The Game State Integration config, written by the Settings "Install GSI config" button (`gsi.write_gsi_cfg`). Points CS2's GSI `uri` at `http://127.0.0.1:8765/gsi` with the app's `gsi_token`. CS2 must be restarted to pick it up. |
 | `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` value is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated, and `rules`, the command-label list. Created automatically if missing or invalid JSON. |
-| `cs2_chatbot_debug.log` | write | Verbose debug log, recreated each run (`logging` is configured at `DEBUG` level in `main.py`). |
+| `cs2_chatbot_debug.log` | write | Verbose debug log next to the executable, recreated each run. Written **only** while `debug_log` is on; with it off the file is never created. Wiring lives in `src/logsetup.py`. |
 
 `<CS2>` is the CS2 install path discovered from the registry; the app computes
 `cs_path = <CS2>/game/csgo` in `main.py`.
 
 Both `chatbot_settings.json` and `cs2_chatbot_debug.log` are git-ignored (see
-`.gitignore`), so secrets and logs never get committed.
+`.gitignore`), so secrets and logs never get committed. The log itself keeps no
+secrets either: it records the *presence* of a token, never its value, and the
+HTTP clients that log request details are turned down in `logsetup.NOISY_LOGGERS`.
 
 ## Windows registry keys
 

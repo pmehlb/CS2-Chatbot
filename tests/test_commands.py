@@ -144,6 +144,8 @@ def test_send_help_writes_all_say_lines_at_once():
         area.app.cfg_written = False
         area.app.can_exec = False
         area.app.exec_state_cb = None
+        area.app.bind_key = 'p'
+        area.app.auto_press = True   # not Human Control: no pending-send tracking
         area._send_help()
         with open(cfg, encoding='utf-8') as f:
             content = f.read()

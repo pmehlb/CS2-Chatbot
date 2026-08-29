@@ -121,16 +121,38 @@ def handle_payload(app, payload) -> int:
     number of events enqueued. Never raises into CS2's HTTP client."""
     token = (payload.get('auth') or {}).get('token')
     if not app.gsi_token or token != app.gsi_token:
-        logger.debug('GSI POST with bad/missing token; ignoring')
+        _warn_bad_token(bool(token))
         return 0
     # Any authenticated POST means CS2 is talking to us -- stamp it so the tab
     # can show a live "receiving" light even on rounds with no taunt-worthy event.
+    if not app.gsi_last_seen:
+        logger.info('CS2 is posting game state to us: the GSI config works.')
     app.gsi_last_seen = time.monotonic()
     events = detect_events(payload, app.gsi_prev)
     for ev in events:
+        if len(app.gsi_events) == app.gsi_events.maxlen:
+            logger.debug('The game-event queue is full; the oldest event is dropped.')
         app.gsi_events.append(ev)
+        logger.info(f'Game event: {ev.kind} {ev.data}')
     app.gsi_prev = _snapshot(payload)
     return len(events)
+
+
+# CS2 posts ten times a second, so a stale token would otherwise write ten log
+# lines a second. Say it once, with the fix.
+_bad_token_warned = False
+
+
+def _warn_bad_token(had_token: bool) -> None:
+    """Warn once per run that CS2's GSI token does not match ours."""
+    global _bad_token_warned
+    if _bad_token_warned:
+        return
+    _bad_token_warned = True
+    logger.warning(
+        f'CS2 posted game state with a {"different" if had_token else "missing"} auth '
+        f'token, so it is ignored. The installed {GSI_CFG_NAME} is out of date: '
+        'reinstall it from Settings > Game State Integration, then restart CS2.')
 
 
 def write_gsi_cfg(app) -> str:
@@ -164,6 +186,7 @@ def write_gsi_cfg(app) -> str:
     )
     with open(path, 'w', encoding='utf-8') as f:
         f.write(body)
+    logger.info(f'Wrote the GSI config to {path}. CS2 reads it at startup only.')
     return path
 
 

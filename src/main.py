@@ -3,6 +3,7 @@ the GUI and the chat-loop timer, then launch the NiceGUI window.
 
 The actual work lives in the focused modules:
   system/winutil.py  Win32 / registry / VDF helpers
+  logsetup.py        the debug-log switch and the startup environment snapshot
   app_state.py       shared AppState passed around instead of globals
   core.py            LogTailer + the extract -> generate -> send chat loop
   areas/             pluggable tabs: AI behaviors + the Settings utility area
@@ -13,7 +14,9 @@ import os
 
 from nicegui import ui
 
+import app_state
 import core
+import logsetup
 from app_state import AppState
 from areas import build_areas
 from system import gsi
@@ -22,28 +25,26 @@ from system.hotkey import HotkeyManager
 from ui import gui
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-        handlers=[
-            logging.FileHandler('cs2_chatbot_debug.log', 'w'),
-            logging.StreamHandler()
-        ]
-    )
+    # The debug-log setting is read straight from the settings file, before an
+    # AppState exists: everything below this line can log, including the CS2
+    # path lookup that is the most common thing to go wrong.
+    settings_path = app_state.default_settings_path()
+    app_settings = app_state.read_settings_file(settings_path).get(app_state.APP_SETTINGS_KEY, {})
+    debug_log = logsetup.configure(app_state.default_log_path(),
+                                   bool(app_settings.get('debug_log', False)))
+
     logger = logging.getLogger(__name__)
-    logger.info("=== CS2-Chatbot Starting with Debug Logging ===")
+    logger.info("=== CS2-Chatbot starting ===")
 
     # Game data.
     cs_path = os.path.join(winutil.get_cs_path(), 'game', 'csgo')
-    logger.debug(f"CS path - {cs_path}")
 
     app = AppState(
         cs_path=cs_path,
         log_path=os.path.join(cs_path, 'console.log'),
         exec_path=os.path.join(cs_path, 'cfg', 'message.cfg'),
+        debug_log=debug_log,
     )
-    logger.debug(f"Log path - {app.log_path}")
-    logger.debug(f"Exec path - {app.exec_path}")
 
     try:
         app.steam_nick = winutil.get_last_steam_nick()
@@ -68,6 +69,10 @@ if __name__ == "__main__":
 
     gui.run_startup_checks(app)
 
-    logger.info("Starting CS2-Chatbot...")
+    # Last, so the snapshot reports the settings the GUI has already loaded
+    # rather than the dataclass defaults.
+    logsetup.log_environment(app)
+
+    logger.info("Starting the GUI window...")
     ui.run(native=True, show=True, window_size=(840, 600), title='CS2 Chatbot',
            reload=False, show_welcome_message=False, port=gsi.GSI_PORT)

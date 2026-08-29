@@ -98,18 +98,38 @@ Each tick:
    getting cut off).
 
 7. **Inject each chunk.** For each chunk the app writes `message.cfg`
-   (`say "<chunk>"` for all-chat, `say_team "<chunk>"` for team chat). If
-   **Auto-press execute key** is on and the foreground window is exactly
-   `Counter-Strike 2`, it presses `bind_key` (`p`), which runs CS2's
-   `bind p "exec message.cfg"` and posts the chunk. The foreground check keeps the
-   synthetic keypress out of any app you've alt-tabbed into. An optional
-   "thinking" pause (`response_delay_ms` plus a random `0..response_jitter_ms`,
-   both `0`/off by default) runs before the first chunk; `chat_delay` (0.5s)
-   separates chunks.
+   (`say "<chunk>"` for all-chat, `say_team "<chunk>"` for team chat). If the
+   foreground window is exactly `Counter-Strike 2`, it presses `bind_key` (`p`),
+   which runs CS2's `bind p "exec message.cfg"` and posts the chunk. The
+   foreground check keeps the synthetic keypress out of any app you've
+   alt-tabbed into. An optional "thinking" pause (`response_delay_ms` plus a
+   random `0..response_jitter_ms`, both `0`/off by default) runs before the
+   first chunk; `chat_delay` (0.5s) separates chunks.
 
 The power button has a companion **exec light**: red while a reply is being
-generated or waiting out the delay, green once it lands in `message.cfg`. With
-auto-press off, that light is how you know when to press the key yourself.
+generated or waiting out the delay, green once it lands in `message.cfg`.
+
+## Human Control (auto-press off)
+
+Turn **Auto-press execute key** off and the app never touches your keyboard.
+Step 7 changes shape: the whole reply is written into `message.cfg` as one
+block, so a single press of your bind key sends all of it, and the exec light
+becomes a "ready to fire" light.
+
+- **Red** while the bot works. The moment a reply starts, the app empties
+  `message.cfg`, so an early keypress cannot fire a stale line.
+- **Green** the moment the finished reply is in the file. Press your bind key
+  when you want it in chat. The "thinking" pause is skipped: it exists to keep
+  an instant reply from looking robotic, and here your keypress sets the timing.
+- **Red again** once the app sees your own message come back through
+  `console.log`. It matches the text, not only the name, so your own typing
+  does not clear a reply that is still waiting.
+
+A new incoming message overwrites a reply you never fired, so what sits in the
+file is always the newest one. Detection needs your Steam name: the app reads it
+from Steam at startup, and you can correct it in **Known Players** with the
+person icon on a row. While the name is unknown, Settings shows a warning and
+the light stays green after a send.
 
 ## Why the keypress + config trick
 
@@ -133,7 +153,9 @@ What replies depends on which tab is open:
   ID directly.
 - **ChatGPT** and **Claude** answer through OpenAI / Anthropic with a trash-talk
   persona and a short rolling history. Each can also react to your own game
-  events (see below).
+  events (see below). A **Conversation** block under the persona controls logs
+  the last few exchanges — who said what and what the bot fired back — so the
+  tab shows its own work without alt-tabbing to CS2.
 - **Tilt Bot** reacts to live game events and optionally claps back at chat,
   using either its editable canned line pools or a borrowed AI brain.
 - **Command Bot (C2)** answers `!`-prefixed commands (`!help`, `!8ball`,

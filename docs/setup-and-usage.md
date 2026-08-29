@@ -120,7 +120,9 @@ The window has a vertical sidebar on the left and a content panel on the right.
 - **Exec status light** (●). Turns red while the bot is processing a reply
   (generating it and waiting out the "thinking" delay) and green once that
   reply has been written to `message.cfg`. It's a quick check of where the bot
-  is in its reply cycle.
+  is in its reply cycle. With **Auto-press execute key** off it reads as "ready
+  to fire": green means the reply is waiting for your keypress, and it goes back
+  to red once your message appears in chat.
 
 ### Character.AI tab
 
@@ -170,8 +172,13 @@ Tokens** | **Appearance** below — over the full-width **Command Rules** and
   - **Cooldown** and **Cooldown (ms)**: when the switch is on, the bot waits at
     least this long (default 3000 ms) between any two replies, across every area.
     Useful against command spam. Off by default.
-  - **Auto-press execute key:** when on, the bot presses your bind key in-game;
-    when off it only writes `message.cfg` and you press the key yourself.
+  - **Auto-press execute key:** when on, the bot presses your bind key in-game.
+    When off (Human Control) the bot writes the whole reply to `message.cfg` and
+    waits: the exec light turns green when the reply is ready to fire, and red
+    again once your message shows up in chat. The "thinking" delay is skipped in
+    this mode, because your keypress sets the timing. A new message replaces a
+    reply you never fired. Detection needs your Steam name, so a warning appears
+    here while that name is unknown.
   - **Attribute messages to speakers:** when on, each incoming chat message is
     fed to the AI areas as `[Name] said: message`, so replies can track who said
     what. The Command Bot and Reverser opt out so it doesn't break their parsing.
@@ -182,7 +189,10 @@ Tokens** | **Appearance** below — over the full-width **Command Rules** and
 - **Known Players.** One toggle per person the bot has seen in chat this session;
   everyone defaults to on (respond). Turn someone off and the bot ignores their
   messages. **Clear** forgets the whole list. The roster is in-memory only and
-  resets when you relaunch.
+  resets when you relaunch. The person icon on a row means "this is me": it saves
+  that name as your Steam name and drops the row, so the bot stops answering you
+  and can tell when a Human Control reply lands in chat. A badge shows the name
+  in use.
 - **API Tokens.** Secret inputs contributed by the areas (e.g. the Character.AI
   token); only shown when at least one area needs a token.
 - **Appearance.** A *Dark Theme* switch and a primary-color picker (the default
@@ -224,5 +234,14 @@ Tokens** | **Appearance** below — over the full-width **Command Rules** and
 - **Bot replies to itself / loops.** The app already skips messages whose
   sender matches your Steam nickname; if your displayed name differs from your
   Steam nick this guard can miss, so check your in-game name.
-- **Need logs?** Every run writes a verbose `cs2_chatbot_debug.log` next to the
-  executable.
+- **Need logs?** Turn on **Settings > Debug Log**. That switch is the only thing
+  that creates a log file: with it off the app writes none. With it on, every
+  run writes `cs2_chatbot_debug.log` next to the executable, and the card shows
+  the exact path (with a copy button).
+
+  The log opens with a snapshot of your setup — build, CS2 paths, whether
+  `-condebug` and admin are on — and then records what the bot sees and does:
+  each chat line it reads, why it chose not to answer one, how long the AI took
+  to reply, and every write to `message.cfg`. To capture a problem: turn the
+  switch on, reproduce it, close the app, then send the file. The log holds no
+  API keys.

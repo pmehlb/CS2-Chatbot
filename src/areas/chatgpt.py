@@ -14,6 +14,7 @@ import traceback
 from nicegui import ui
 from openai import AsyncOpenAI
 
+from ui.transcript import Transcript
 from ui.ui_util import area_header, notify_and_log, settings_card
 from .base import ChatArea, TokenField
 from .event_prompts import event_to_prompt
@@ -70,6 +71,7 @@ class ChatGPTArea(ChatArea):
         self.system_prompt = DEFAULT_SYSTEM_PROMPT  # persisted
         self.temperature = DEFAULT_TEMPERATURE      # persisted
         self.history = []                           # runtime-only rolling history
+        self.transcript = Transcript()              # what was said / answered, shown in the tab
         self.react_to_events = False   # opt in to taunting your own GSI events
         self.consumes_events = False   # instance flag the chat loop reads
 
@@ -108,16 +110,33 @@ class ChatGPTArea(ChatArea):
                 temperature=self.temperature,
             )
             reply = (response.choices[0].message.content or '').strip()
-            logger.debug(f"Received response: {reply}")
+            # finish_reason and the token counts turn "the reply was cut off"
+            # and "the bill is bigger than expected" into something the log
+            # answers on its own.
+            finish = getattr(response.choices[0], 'finish_reason', None)
+            usage = getattr(response, 'usage', None)
+            logger.debug(f'OpenAI replied ({len(reply)} chars, finish_reason={finish}, '
+                         f"in/out tokens={getattr(usage, 'prompt_tokens', '?')}/"
+                         f"{getattr(usage, 'completion_tokens', '?')}): {reply!r}")
+            if finish == 'length':
+                logger.warning(f'OpenAI hit the {MAX_TOKENS}-token limit, so the reply '
+                               'is cut short.')
 
             # Record the exchange and trim to the rolling window.
             self.history.append({'role': 'user', 'content': message})
             self.history.append({'role': 'assistant', 'content': reply})
             del self.history[:-MAX_HISTORY_MESSAGES]
 
+            # Same exchange, for the tab's Conversation block (state only; the
+            # card redraws itself on a timer).
+            self.transcript.record(message, reply)
+
             return reply
         except Exception as e:
-            logger.error(f"Failed to get a response from OpenAI: {e}")
+            # The class name is the useful half: AuthenticationError, RateLimitError
+            # and APIConnectionError all read the same in the notification.
+            logger.error(f'Failed to get a response from OpenAI for model '
+                         f'{self.model!r}: {type(e).__name__}: {e}')
             logger.error(traceback.format_exc())
             notify_and_log(f'Failed to get a response: {e}', type='negative')
             return None
@@ -178,6 +197,9 @@ class ChatGPTArea(ChatArea):
                 ui.tooltip('When on, this bot also taunts about your own GSI events '
                            '(multi-kills, MVPs, clutches) while its tab is active. '
                            'Set up Game State Integration in Settings first.')
+
+        # What the bot is actually doing, under the controls that shape it.
+        self.transcript.build()
 
     # ------------------------------------------------------------------ helpers
 

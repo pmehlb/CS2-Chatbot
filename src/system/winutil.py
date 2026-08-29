@@ -105,9 +105,18 @@ def get_steam_path():
 
 
 def get_cs_path():
-    reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\WOW6432Node\\Valve\\cs2')
-    path = winreg.QueryValueEx(reg_key, 'installpath')[0]
-    winreg.CloseKey(reg_key)
+    try:
+        reg_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\WOW6432Node\\Valve\\cs2')
+        path = winreg.QueryValueEx(reg_key, 'installpath')[0]
+        winreg.CloseKey(reg_key)
+    except OSError as e:
+        # Fatal for the app (every path is built from this), so say what was
+        # looked for rather than letting a bare registry error reach the user.
+        logger.error('Could not read the CS2 install path from '
+                     f'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\cs2\\installpath: {e}. '
+                     'Is CS2 installed for this Windows user?')
+        raise
+    logger.debug(f'CS2 install path from the registry: {path}')
     return str(path)
 
 
@@ -138,7 +147,7 @@ def is_condebug_in_game_args():
 
     cfg_path = os.path.join(steam_path, 'userdata', str(user_id), 'config', 'localconfig.vdf')
     if not os.path.exists(cfg_path):
-        logger.warning('Steam missing localconfig.vdf')
+        logger.warning(f'Steam is missing localconfig.vdf at {cfg_path}')
         return False
 
     try:
@@ -149,8 +158,13 @@ def is_condebug_in_game_args():
         else:
             args = cfg['UserLocalConfigStore']['Software']['Valve']['steam']['apps']['730']['LaunchOptions']
 
+        logger.debug(f'CS2 launch options: {args!r}')
         return '-condebug' in args.lower()
-    except:
+    except Exception as e:
+        # A missing app 730 entry means CS2 has no launch options set at all,
+        # which is the answer, not an error. Say which it was.
+        logger.warning(f'Could not read the CS2 launch options from {cfg_path}: '
+                       f'{type(e).__name__}: {e}')
         return False
 
 

@@ -25,10 +25,21 @@ def build(app):
     app.attribute_speakers = saved.get('attribute_speakers', app.attribute_speakers)
     app.toggle_key = saved.get('toggle_key', app.toggle_key)
 
+    # main reads the Steam name from Steam itself, but a promoted "this is me"
+    # roster name wins: the user picked it, and a second account or a rename can
+    # leave the auto-detected one wrong or blank.
+    app.steam_nick = saved.get('steam_nick') or app.steam_nick
+
     # Command rules are a list, so a hand-edited settings file could hand us
     # anything; fall back to none rather than letting the chat loop trip over it.
     saved_rules = saved.get('rules')
     app.rules = saved_rules if isinstance(saved_rules, list) else []
+
+    # debug_log is deliberately not reloaded here. main.py already applied it
+    # and set app.debug_log to the state the log actually reached, which is
+    # False when the file could not be opened. Reading the saved value again
+    # would put the switch back to on while nothing is being written.
+    logger.debug(f'Loaded app settings from {app.settings_file}: {sorted(saved)}')
 
     theme = ui.dark_mode()
     theme.enable() if saved.get('dark_theme', True) else theme.disable()
@@ -67,8 +78,9 @@ def build(app):
 
                 exec_light = ui.icon('circle').classes('text-2xl').props('color=red')
                 with exec_light:
-                    ui.tooltip('Exec status: green when a reply has been written '
-                               'to message.cfg, red while processing.')
+                    ui.tooltip('Exec status: green when a reply sits in message.cfg, '
+                               'ready to fire; red while the bot works. With auto-press '
+                               'off it stays green until your message shows up in chat.')
 
         with splitter.after:
             initial_tab = tab_objs[app.areas[0].label] if app.areas else None
@@ -137,15 +149,25 @@ def _gate_power(app, new_state, status_badge):
 
     app.powered_on = True
     _set_status_badge(status_badge, True)
+    # The state the rest of the log is read against: which area answers, and
+    # whether the app or the user fires the reply.
+    logger.info(f'Bot switched ON with area {area.key!r} '
+                f'(auto-press={app.auto_press}, cooldown={app.cooldown_enabled}).')
     notify_and_log('Chatbot is now running!', type='positive', color='pink')
     return True
 
 
 def run_startup_checks(app):
+    # Both checks are warnings a user can act on, and both are the reason for a
+    # bot that never answers, so the log keeps them next to the notification.
     if not winutil.is_running_as_admin():
+        logger.warning('Not running as admin: the global toggle hotkey and the keypress '
+                       'into CS2 may be blocked.')
         ui.notify('Not running as admin, some features <b>may not work</b>.', html=True, close_button='Close',
                   timeout=0, type='warning')
 
     if not winutil.is_condebug_in_game_args():
+        logger.warning('-condebug is not in the CS2 launch options: CS2 writes no '
+                       'console.log, so the bot sees no chat at all.')
         ui.notify('Could not find <b>-condebug</b> in Steam CS2 launch arguments.', html=True, close_button='Close',
                   timeout=0, type='warning')

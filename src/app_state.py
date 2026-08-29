@@ -11,22 +11,56 @@ import sys
 from collections import deque
 from dataclasses import dataclass, field
 
+import logsetup
+
 logger = logging.getLogger(__name__)
 
 
-def default_settings_path() -> str:
-    """Absolute path to the settings file, kept next to the executable.
+def app_dir() -> str:
+    """The directory the app keeps its own files in.
 
-    Frozen (PyInstaller build): alongside the .exe, so the config lives with the
+    Frozen (PyInstaller build): alongside the .exe, so the files live with the
     app the user actually launches. Running from source: the project directory
-    (next to this module). Either way it's an absolute path, so persistence does
-    not depend on the current working directory.
+    (next to this module). Either way it's an absolute path, so nothing depends
+    on the current working directory.
     """
     if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, 'chatbot_settings.json')
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def default_settings_path() -> str:
+    """Absolute path to the settings file, kept next to the executable."""
+    return os.path.join(app_dir(), 'chatbot_settings.json')
+
+
+def default_log_path() -> str:
+    """Absolute path to the debug log, kept next to the executable.
+
+    The same directory as the settings file: a log only helps if the person
+    hitting the bug can find it, and "next to the thing I double-clicked" is
+    the one place they will look.
+    """
+    return os.path.join(app_dir(), logsetup.LOG_FILENAME)
+
+
+def read_settings_file(path: str) -> dict:
+    """Read the whole settings file; empty dict if it's missing or invalid.
+
+    A module-level function, not only an AppState method, because main.py has to
+    read one setting -- whether to write a debug log -- before it can build an
+    AppState or log anything at all.
+    """
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f'Could not read settings from {path} ({e}); using defaults. '
+                       'Saving any setting rewrites the file.')
+        return {}
 
 
 # Namespace for cross-cutting app settings (theme, typing flags) inside the same
@@ -43,6 +77,10 @@ class AppState:
 
     # Persistence / send configuration.
     settings_file: str = field(default_factory=default_settings_path)
+    # The one control over the debug log: while it's False no log file is
+    # written at all. Read in main.py before anything else starts, so a crash
+    # during startup still lands in the file when the user asked for one.
+    debug_log: bool = False
     bind_key: str = 'p'
     chat_char_limit: int = 221  # Cut-off observed with 222
     chat_delay: float = 0.5
@@ -114,21 +152,19 @@ class AppState:
     can_exec: bool = False              # True = green (response written), False = red (processing)
     exec_state_cb: object = None        # gui callback, invoked with can_exec when it changes
 
+    # Human Control (auto_press off): the chat text the app wrote to message.cfg
+    # and is still waiting to see in chat. The light stays green -- "ready to
+    # fire" -- until every chunk comes back through console.log, which needs
+    # steam_nick to be set. Runtime only, cleared when a new reply starts.
+    pending_sends: list = field(default_factory=list)
+
     # GUI handles set during gui.build (the Settings area reaches them via app).
     theme: object = None                # ui.dark_mode() handle for theme toggling
     open_settings: object = None        # callable that switches to the Settings tab
                                         # (e.g. Tilt Bot's "set up GSI" link)
 
     def _read_all(self) -> dict:
-        try:
-            with open(self.settings_file, encoding='utf-8') as f:
-                data = json.load(f)
-                return data if isinstance(data, dict) else {}
-        except FileNotFoundError:
-            return {}
-        except json.JSONDecodeError:
-            logger.warning('Invalid settings JSON; ignoring existing file.')
-            return {}
+        return read_settings_file(self.settings_file)
 
     def area_by_key(self, key):
         """Return the registered area with this ``key`` (e.g. 'claude'), or None.
@@ -150,8 +186,10 @@ class AppState:
         try:
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(all_settings, f, indent=2)
+            # Keys only, never values: this namespace holds the API tokens.
+            logger.debug(f'Saved settings for {key!r}: {sorted(data)} -> {self.settings_file}')
         except OSError as e:
-            logger.error(f'Failed to save settings for {key}: {e}')
+            logger.error(f'Failed to save settings for {key} to {self.settings_file}: {e}')
 
     def load_app_settings(self) -> dict:
         """Return the saved cross-cutting app settings (theme, typing flags)."""

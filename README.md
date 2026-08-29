@@ -67,20 +67,22 @@ also opt in to reacting to your own live game events.
 | Tab | What it does                                                                                                                                                                              | Needs an account? |
 |-----|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
 | 👥 **C.AI** | Replies as any [Character.AI](https://character.ai/) persona. Search for a character or paste an ID, then select it.                                                                      | C.AI token |
-| 🤖 **ChatGPT** | Replies via OpenAI. Pick a model and give the bot a persona.                                                                                                                              | OpenAI API key |
-| ✨ **Claude** | Replies via Anthropic's Claude. Pick a model and reasoning effort and give it a persona.                                                                                                  | Anthropic API key |
+| 🤖 **ChatGPT** | Replies via OpenAI. Pick a model and give the bot a persona. Shows a live log of what was said and what it replied.                                                                       | OpenAI API key |
+| ✨ **Claude** | Replies via Anthropic's Claude. Pick a model and reasoning effort and give it a persona. Shows a live log of what was said and what it replied.                                           | Anthropic API key |
 | 🔥 **Tilt Bot** | Reacts to *your* live game events (multi-kills, MVPs, round wins, clutches, match point) with taunts, and can clap back at chat. Uses editable built-in lines **or** borrows an AI brain. | No (needs [GSI](#tilt-bot-and-live-game-events-gsi)) |
 | ⌨️ **C2** (Command Bot) | Answers `!`-prefixed commands in chat: `!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, and `!ticker`. Toggle which are enabled.  | No |
 | 💬 **Mimic** | Repeats the last message back with `RaNdOmLy ApPlIeD` capitalization.                                                                                                                     | No |
 | 🔁 **Reverser** | Reverses the last message, optionally find/replacing words first.                                                                                                                         | No |
-| ⚙️ **Settings** | Configure timing/cooldown, known-player attribution, API tokens, theme and accent colour, the toggle hotkey, and GSI setup.                                                               | No |
+| ⚙️ **Settings** | Configure timing/cooldown, known-player attribution, API tokens, theme and accent colour, the toggle hotkey, GSI setup, and the debug log.                                              | No |
 
 More on each group:
 
 - **AI chat tabs (C.AI, ChatGPT, Claude).** These are the trash-talkers. Give
   one a persona and it replies to whatever lands in all-chat. Each can also tick
   **"Also react to my game events"** so it celebrates your highlights, not just
-  other people's messages.
+  other people's messages. ChatGPT and Claude keep a **Conversation** block under
+  their controls: the last few messages they answered and the exact replies they
+  sent, so you can watch the bot work without alt-tabbing.
 
   <p align="center">
     <img src="docs/assets/tab-claude.png" alt="Claude tab" width="500">
@@ -117,8 +119,10 @@ More on each group:
 - **Settings.** Everything the areas share: how fast, how often, and to whom the bot
   replies, your API tokens (each area reads the one it needs), the theme and
   accent colour, the global on/off hotkey, the **Command Rules** list that maps
-  `([LABEL])` strings a bot writes onto actions, and the **Install GSI config**
-  button with its connection light.
+  `([LABEL])` strings a bot writes onto actions, the **Install GSI config**
+  button with its connection light, and the **Debug Log** switch. That last one
+  is off by default and is the only thing that creates a log file — flip it on,
+  reproduce whatever went wrong, and send the file.
 
   <p align="center">
     <img src="docs/assets/tab-settings.png" alt="Settings tab" width="500">

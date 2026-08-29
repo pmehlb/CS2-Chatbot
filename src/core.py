@@ -28,6 +28,10 @@ TEAM_CHAT_MARKERS = ('  [T] ', '  [CT] ')
 # cut there to get a clean name that's stable whether the player is alive or dead.
 NAME_END_MARKER = '‎'
 
+# Throttle for the per-read log line. The loop ticks ten times a second, so an
+# unthrottled read log would be most of the debug file.
+READ_LOG_SECONDS = 1.0
+
 
 class LogTailer:
     """Incrementally reads a growing log file, yielding only newly-appended lines.
@@ -51,6 +55,12 @@ class LogTailer:
         self.offset = 0
         self._buffer = ''
         self._decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+        # Diagnostics. "console.log never appears" and "console.log stops
+        # growing" are the two ways the bot goes quiet with nothing else to
+        # show for it, so both are logged -- but only when the state changes,
+        # because this runs ten times a second.
+        self._present = None      # None = not checked yet, then True/False
+        self._last_read_log = 0.0
 
     def seek_to_end(self) -> None:
         """Skip whatever is already in the file (don't replay old chat)."""
@@ -74,10 +84,14 @@ class LogTailer:
         """Yield each complete line appended since the previous call."""
         try:
             size = os.path.getsize(self.path)
-        except OSError:
+        except OSError as e:
+            self._note_presence(False, str(e))
             return  # file not present yet
+        self._note_presence(True, f'{size} bytes')
 
         if size < self.offset:  # rotation / truncation -> start over
+            logger.info(f'console.log shrank to {size} bytes (was at {self.offset}); '
+                        'CS2 recreated it. Reading from the start.')
             self.offset = 0
             self._reset_read_state()
 
@@ -89,13 +103,46 @@ class LogTailer:
                 f.seek(self.offset)
                 data = f.read()
                 self.offset = f.tell()
-        except OSError:
+        except OSError as e:
+            self._log_throttled(logging.WARNING, f'Could not read {self.path}: {e}')
             return
 
         text = self._buffer + self._decoder.decode(data)
         *complete, self._buffer = text.split('\n')
+        self._log_throttled(logging.DEBUG,
+                            f'console.log: +{len(data)} bytes, {len(complete)} lines '
+                            f'(offset now {self.offset})')
         for line in complete:
             yield line.rstrip('\r')
+
+    def _note_presence(self, present: bool, detail: str) -> None:
+        """Log console.log appearing or vanishing -- once per change, not per tick.
+
+        A missing console.log is the single most common reason the bot never
+        answers, and the fix is always the same, so the warning carries it.
+        """
+        if present == self._present:
+            return
+        self._present = present
+        if present:
+            logger.info(f'Reading CS2 chat from {self.path} ({detail}).')
+        else:
+            logger.warning(f'No console.log to read at {self.path} ({detail}). CS2 only '
+                           'writes it with -condebug in its Steam launch options, and it '
+                           'appears when the game starts.')
+
+    def _log_throttled(self, level: int, message: str) -> None:
+        """Log at most once a second.
+
+        Reads happen on every 0.1s tick, and a busy match writes to console.log
+        constantly. Throttling keeps "is the file still growing?" answerable
+        without burying the interesting lines.
+        """
+        now = time.monotonic()
+        if now - self._last_read_log < READ_LOG_SECONDS:
+            return
+        self._last_read_log = now
+        logger.log(level, message)
 
 
 def _channel_for(line: str):
@@ -134,8 +181,11 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
         if not message:
             continue
 
-        # Don't respond to our own messages.
+        # Don't respond to our own messages -- but do use them to confirm that a
+        # reply waiting under Human Control actually reached chat.
         if steam_nick and steam_nick in name_part:
+            logger.debug(f'Own message in {channel} chat, not answering: {message!r}')
+            note_own_chat_line(app, message)
             continue
 
         # The display name follows the channel marker; cut at the U+200E that CS2
@@ -149,12 +199,16 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
         if name not in app.roster:
             app.roster[name] = True
             app.roster_version += 1
+            logger.info(f'New player in chat: {name!r} (answering them by default)')
 
         # Only the newest message from an allowed speaker is answerable.
         if app.roster[name]:
+            logger.debug(f'[{channel}] {name}: {message!r}')
             latest = message
             latest_channel = channel
             latest_name = name
+        else:
+            logger.debug(f'[{channel}] {name} is muted in Known Players, skipping: {message!r}')
     return latest, latest_channel, latest_name
 
 
@@ -171,53 +225,97 @@ def attribute_message(message: str, name, app, area) -> str:
     return message
 
 
-def chat_command_lines(reply, channel: str, char_limit: int):
-    """Turn a reply into the ordered message.cfg command lines to write.
+def chat_message_chunks(reply, char_limit: int):
+    """Turn a reply into the exact text chunks CS2 will show in chat.
 
     ``reply`` is a str (one chat line) or a list of strings (each its own chat
     line, e.g. the !help block). Each line is cleaned so it sits safely inside a
-    quoted console command (" -> '', newline -> space), split into <=char_limit
-    chunks, and prefixed with the channel verb: 'say' for all-chat, 'say_team'
-    for team chat. Empty/whitespace-only lines are skipped.
+    quoted console command (" -> '', newline -> space) and split into
+    <=char_limit pieces. Empty lines are skipped.
+
+    The chunks are the text of the message itself, without the say verb, so
+    Human Control can compare them against the chat lines that come back in
+    console.log and know the reply reached the server.
     """
-    verb = 'say_team' if channel == 'team' else 'say'
     messages = [reply] if isinstance(reply, str) else list(reply)
-    lines = []
+    chunks = []
     for msg in messages:
         clean = msg.replace('"', "''").replace('\n', ' ')
         if not clean:
             continue
         for i in range(0, len(clean), char_limit):
-            lines.append(f'{verb} "{clean[i:i + char_limit]}"')
-    return lines
+            chunks.append(clean[i:i + char_limit])
+    return chunks
+
+
+def chat_command_lines(reply, channel: str, char_limit: int):
+    """Turn a reply into the ordered message.cfg command lines to write.
+
+    Each chunk from ``chat_message_chunks`` gets the channel verb: 'say' for
+    all-chat, 'say_team' for team chat.
+    """
+    verb = 'say_team' if channel == 'team' else 'say'
+    return [f'{verb} "{chunk}"' for chunk in chat_message_chunks(reply, char_limit)]
+
+
+def human_control(app) -> bool:
+    """True while the human fires the reply (the auto-press switch is off)."""
+    return not app.auto_press
 
 
 async def send_to_game(reply, app, channel: str = 'all') -> None:
-    """Clean, chunk and type a reply into CS2 via the message.cfg + bind trick.
+    """Clean, chunk and hand a reply to CS2 via the message.cfg + bind trick.
 
-    ``reply`` may be a str or a list of strings; each resulting cfg line is
-    written and execed in turn. ``channel`` selects say vs say_team.
+    ``reply`` may be a str or a list of strings. With auto-press on, each cfg
+    line is written and execed in turn (one keypress per line). Under Human
+    Control the whole reply is written at once so a single keypress sends all
+    of it, and the chunks are remembered so the exec light can drop back to red
+    once they appear in chat. ``channel`` selects say vs say_team.
     """
-    lines = chat_command_lines(reply, channel, app.chat_char_limit)
-    if not lines:
+    chunks = chat_message_chunks(reply, app.chat_char_limit)
+    if not chunks:
+        logger.debug('Nothing left to send after cleaning the reply.')
+        return
+    verb = 'say_team' if channel == 'team' else 'say'
+    lines = [f'{verb} "{chunk}"' for chunk in chunks]
+
+    if human_control(app):
+        # One file, one exec: the human presses the bind key when they want to.
+        # The "thinking" pause is skipped here on purpose -- it exists to keep an
+        # instant reply from looking robotic in chat, and under Human Control the
+        # person pressing the key already sets that timing. Waiting would only
+        # hide a finished reply from them.
+        logger.debug(f'Writing {len(chunks)} chunk(s) for {channel} chat as {verb!r} '
+                     '(Human Control: no keypress)')
+        if not _write_cfg(app, '\n'.join(lines) + '\n'):
+            return
+        app.pending_sends = list(chunks)
+        logger.info(f'Reply is ready in message.cfg. Press {app.bind_key!r} in CS2 to send it.')
+        set_exec_state(app, True)
         return
 
     # "Thinking" pause before responding: a fixed base plus random jitter on top.
     delay_ms = app.response_delay_ms + random.uniform(0, max(0, app.response_jitter_ms))
+    logger.debug(f'Sending {len(chunks)} chunk(s) to {channel} chat as {verb!r} after '
+                 f'{delay_ms:.0f}ms (key={app.bind_key!r})')
     if delay_ms > 0:
         await asyncio.sleep(delay_ms / 1000)
 
     for line in lines:
-        with open(app.exec_path, 'w', encoding='utf-8') as f:
-            f.write(line)
-        app.cfg_written = True
+        if not _write_cfg(app, line):
+            return
 
         # Don't send keypresses to other windows.
-        if get_foreground_window_title() == 'Counter-Strike 2':
-            # Auto-press the bind key, or leave it for the user (exec light shows when ready).
-            if app.auto_press:
-                pydirectinput.write(app.bind_key)
+        title = get_foreground_window_title()
+        if title == 'Counter-Strike 2':
+            pydirectinput.write(app.bind_key)
             await asyncio.sleep(app.chat_delay)
+        else:
+            # The single most confusing failure: the reply is written, nothing
+            # is typed, and nothing says why. Name the window that had focus.
+            logger.warning(f'CS2 is not the focused window ({title!r}), so the '
+                           f'{app.bind_key!r} keypress was skipped. This chunk stays in '
+                           'message.cfg until the next reply overwrites it.')
 
     # Response output is now in message.cfg: exec light goes green.
     set_exec_state(app, True)
@@ -234,21 +332,92 @@ def write_message_cfg(reply, app, channel: str = 'all') -> bool:
 
     Returns True if anything was written.
     """
-    lines = chat_command_lines(reply, channel, app.chat_char_limit)
-    if not lines:
+    chunks = chat_message_chunks(reply, app.chat_char_limit)
+    if not chunks:
         return False
-    with open(app.exec_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines) + '\n')
-    app.cfg_written = True
+    verb = 'say_team' if channel == 'team' else 'say'
+    if not _write_cfg(app, '\n'.join(f'{verb} "{chunk}"' for chunk in chunks) + '\n'):
+        return False
+    logger.info(f'Wrote {len(chunks)} chunk(s) to message.cfg for {channel} chat; '
+                f'press {app.bind_key!r} in CS2 to send.')
+    if human_control(app):
+        app.pending_sends = list(chunks)
     set_exec_state(app, True)
     return True
+
+
+def _write_cfg(app, text: str) -> bool:
+    """Write message.cfg, reporting a failure instead of raising into the tick.
+
+    The chat loop runs inside a NiceGUI timer, where a raised OSError is easy to
+    miss. A cfg folder that has moved or is locked is worth one clear line in
+    the log and one notification, and the loop keeps running.
+    """
+    try:
+        with open(app.exec_path, 'w', encoding='utf-8') as f:
+            f.write(text)
+    except OSError as e:
+        notify_and_log(f'Could not write {app.exec_path}: {e}', type='negative')
+        return False
+    app.cfg_written = True
+    return True
+
+
+def clear_message_cfg(app) -> None:
+    """Empty message.cfg so an early keypress cannot fire a stale reply.
+
+    Only used under Human Control, where the file sits there until the human
+    presses the bind key. A missing folder or a locked file is not worth
+    stopping a reply for, so failures are logged and ignored.
+    """
+    try:
+        with open(app.exec_path, 'w', encoding='utf-8') as f:
+            f.write('')
+    except OSError as e:
+        logger.warning(f'Could not clear {app.exec_path}: {e}')
+
+
+def begin_reply(app) -> None:
+    """Start a reply: exec light red, and under Human Control an empty cfg.
+
+    Called the moment the app commits to generating, for both chat replies and
+    event taunts. The previous reply is dropped here (the newest reply wins),
+    so anything still waiting in message.cfg goes away with it.
+    """
+    set_exec_state(app, False)
+    if human_control(app):
+        app.pending_sends = []
+        clear_message_cfg(app)
+
+
+def note_own_chat_line(app, text: str) -> None:
+    """Tick off one pending chunk when our own message shows up in chat.
+
+    Under Human Control the exec light means "ready to fire", so it stays green
+    until CS2 echoes the text we wrote. Matching the text (not just the nick)
+    keeps your own typing from clearing a reply that is still waiting.
+    """
+    pending = getattr(app, 'pending_sends', None)
+    if not pending:
+        return
+    clean = (text or '').strip()
+    for index, chunk in enumerate(pending):
+        if chunk.strip() == clean:
+            del pending[index]
+            logger.debug(f'Reply chunk reached chat; {len(pending)} still waiting.')
+            break
+    if not pending:
+        logger.info('The whole reply reached chat: the exec light goes back to red.')
+        set_exec_state(app, False)
 
 
 def set_exec_state(app, ready: bool) -> None:
     """Flip the exec light and notify the GUI only when the state changes.
 
     Green (ready=True) once a response has been written to message.cfg; red
-    (ready=False) while a reply is being processed.
+    (ready=False) while a reply is being processed. Under Human Control green
+    also means "not sent yet": the light goes red again once the message
+    appears in chat (see ``note_own_chat_line``).
     """
     if ready != app.can_exec:
         app.can_exec = ready
@@ -271,13 +440,16 @@ def _next_event(app):
     if not app.gsi_events:
         return None
     event = app.gsi_events.pop()   # newest
+    if app.gsi_events:
+        logger.debug(f'Dropped {len(app.gsi_events)} older game event(s) in favour of '
+                     f'{event.kind}.')
     app.gsi_events.clear()
     return event
 
 
 async def _react_to_event(app, area, event) -> None:
     """Generate and send a taunt for a GSI event via the same path as chat."""
-    set_exec_state(app, False)
+    begin_reply(app)
     try:
         logger.debug(f"[{area.key}] reacting to event: {event.kind}")
         reply = await area.generate_event(event, app)
@@ -288,8 +460,13 @@ async def _react_to_event(app, area, event) -> None:
         return
 
     # Event taunts go through the same command-label pass as chat replies.
-    reply = rules.apply_rules(reply, app.rules)
+    ruled = rules.apply_rules(reply, app.rules)
+    if ruled != reply:
+        logger.info(f'A command rule silenced the {event.kind} taunt.' if not ruled
+                    else f'A command rule rewrote the {event.kind} taunt to {ruled!r}')
+    reply = ruled
     if not reply:
+        logger.debug(f'No taunt sent for {event.kind}.')
         return
     await send_to_game(reply, app, 'all')
     app.last_reply_at = time.monotonic()
@@ -300,16 +477,30 @@ async def handle_tick(app) -> None:
     # Always drain the tailer so the offset (and roster) stays current even while off.
     message, channel, name = extract_latest_message(app.tailer, app.steam_nick, app)
 
+    # Each guard below explains itself, but only when a message was actually
+    # waiting: the loop ticks ten times a second and an idle tick tells nobody
+    # anything. "Why did it not answer that?" is the question worth answering.
     if not app.powered_on or app.active_area is None:
+        if message is not None:
+            logger.debug('Not answering %r: %s', message,
+                         'the bot is switched off' if not app.powered_on
+                         else 'the open tab does not answer chat (Settings is a utility tab)')
         return
 
     area = app.active_area
-    ready, _ = area.is_ready()
+    ready, reason = area.is_ready()
     if not ready:
+        if message is not None:
+            logger.warning(f"[{area.key}] is not ready ({reason or 'no reason given'}), "
+                           f'so {message!r} goes unanswered.')
         return
 
     # Global cooldown applies to both event taunts and chat replies.
-    if cooldown_active(app, time.monotonic()):
+    now = time.monotonic()
+    if cooldown_active(app, now):
+        if message is not None:
+            remaining = app.cooldown_ms - (now - app.last_reply_at) * 1000
+            logger.debug(f'Cooldown has {remaining:.0f}ms left, so {message!r} goes unanswered.')
         return
 
     # GSI game-event reactions take priority over chat: they're time-sensitive
@@ -329,24 +520,37 @@ async def handle_tick(app) -> None:
     message = attribute_message(message, name, app, area)
 
     # We're committing to generate + send a reply: exec light goes red until
-    # the response lands in message.cfg.
-    set_exec_state(app, False)
+    # the response lands in message.cfg. Under Human Control this also empties
+    # the cfg, so the newest reply is the only one you can fire.
+    begin_reply(app)
 
+    started = time.monotonic()
     try:
-        logger.debug(f"[{area.key}] generating reply to: {message}")
+        logger.debug(f"[{area.key}] generating a reply to {message!r}")
         reply = await area.generate(message, app)
     except Exception as e:
-        logger.error(f"Handler '{area.key}' failed: {e}")
+        # The elapsed time separates "the API refused us" from "the API never
+        # answered", which are different problems with the same symptom.
+        logger.error(f"Handler '{area.key}' failed after "
+                     f'{(time.monotonic() - started) * 1000:.0f}ms: {type(e).__name__}: {e}')
         logger.error(traceback.format_exc())
         notify_and_log(f'Failed to generate a reply: {e}', type='negative')
         return
 
+    logger.debug(f'[{area.key}] answered in {(time.monotonic() - started) * 1000:.0f}ms '
+                 f'with {reply!r}')
+
     # Command labels the bot wrote into its own reply (e.g. "([SILENT])") are
     # resolved here, before anything is typed: a silencing rule returns None and
     # falls into the guard below, so no keystrokes and no cooldown are spent.
-    reply = rules.apply_rules(reply, app.rules)
+    ruled = rules.apply_rules(reply, app.rules)
+    if ruled != reply:
+        logger.info('A command rule silenced the reply.' if not ruled
+                    else f'A command rule rewrote the reply to {ruled!r}')
+    reply = ruled
 
     if not reply:
+        logger.debug('Nothing to send: the area returned no reply, or a rule dropped it.')
         return
 
     await send_to_game(reply, app, channel)

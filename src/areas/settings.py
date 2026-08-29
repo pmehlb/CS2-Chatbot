@@ -1,5 +1,5 @@
-"""The Settings area: appearance, chatbot timing, command rules, API tokens and
-the live player roster.
+"""The Settings area: appearance, chatbot timing, command rules, API tokens,
+the debug log and the live player roster.
 
 It implements the same ChatArea contract as the chat behaviors and gets its
 tab the same way (registered in areas/__init__.py), but sets ``answerable =
@@ -11,6 +11,7 @@ import time
 
 from nicegui import ui
 
+import logsetup
 import rules
 from system import gsi
 from ui.ui_util import notify_and_log, settings_card
@@ -84,8 +85,18 @@ class SettingsArea(ChatArea):
                                         on_change=lambda e: set_flag('auto_press', e.value)) \
                     .props('dense')
                 with auto_switch:
-                    ui.tooltip('When on, the bot presses your bind key in-game. When off, the '
-                               'bot only writes message.cfg — press it yourself (watch the exec light).')
+                    ui.tooltip('When on, the bot presses your bind key in-game. When off '
+                               '(Human Control) the bot writes the whole reply to message.cfg '
+                               'and waits: the exec light turns green when it is ready to fire, '
+                               'and red again once your message shows up in chat.')
+
+                # Human Control watches console.log for your own chat lines, so a
+                # blank Steam name leaves the light stuck on green. Only shown when
+                # there is something to fix; "Known Players" is where you fix it.
+                ui.label('Your Steam name is unknown, so a sent message cannot be detected. '
+                         'Under Known Players, use the person icon to promote your own name.') \
+                    .classes('text-xs text-amber-600') \
+                    .bind_visibility_from(app, 'steam_nick', backward=lambda nick: not nick)
 
                 attribute_switch = ui.switch('Attribute messages to speakers', value=app.attribute_speakers,
                                              on_change=lambda e: set_flag('attribute_speakers', e.value)) \
@@ -109,10 +120,64 @@ class SettingsArea(ChatArea):
                         ui.color_picker(on_pick=lambda e: set_color(e.color))
                     ui.label('Accent color').classes('text-sm opacity-70')
 
-        # Command rules and GSI setup both span the full width below the grid:
-        # each is a list/setup flow that would be cramped in a half-width card.
+        # Command rules, GSI setup and the debug log all span the full width
+        # below the grid: each is a list, a setup flow, or a long file path that
+        # would be cramped in a half-width card.
         self._rules_section(app)
         self._gsi_section(app)
+        self._debug_log_section(app)
+
+    def _debug_log_section(self, app):
+        """Render the 'Debug Log' card: the one control over the log file.
+
+        The switch is the whole feature -- while it is off the app writes no log
+        file at all, and turning it on starts one at once, without a restart.
+        The path is shown next to it because a log is only useful if the person
+        hitting the bug can find the file to send it.
+        """
+
+        def set_debug_log(wanted: bool):
+            # Reverting the switch below fires this handler again; the state
+            # already matches by then, so that echo stops here.
+            if wanted == app.debug_log:
+                return
+            reached = logsetup.set_enabled(wanted)
+            app.debug_log = reached
+            app.save_app_setting('debug_log', reached)
+            if wanted and not reached:
+                # Almost always a read-only folder: the app sits in Program
+                # Files and the log cannot be created next to it.
+                notify_and_log(f'Could not write the log file at {logsetup.log_path()}. '
+                               'Try moving the app somewhere you can write to.',
+                               type='negative')
+                switch.value = False
+                return
+            if wanted:
+                # Repeat the environment block, so a log started halfway through
+                # a session still opens with the paths and versions to read it.
+                logsetup.log_environment(app)
+            notify_and_log('Debug log started.' if reached else 'Debug log stopped.',
+                           type='positive' if reached else 'info')
+
+        with settings_card('Debug Log'):
+            switch = ui.switch('Write a debug log', value=app.debug_log,
+                               on_change=lambda e: set_debug_log(e.value)).props('dense')
+            with switch:
+                ui.tooltip('Records what the bot sees and does, for tracking down a '
+                           'problem. Off means no log file is written at all.')
+
+            with ui.row().classes('items-center gap-2 w-full no-wrap'):
+                ui.label(logsetup.log_path()).classes('text-xs opacity-60 break-all min-w-0')
+                copy_btn = ui.button(icon='content_copy',
+                                     on_click=lambda: self._copy(logsetup.log_path(),
+                                                                 'Log file path')) \
+                    .props('flat round dense size=sm').classes('shrink-0')
+                with copy_btn:
+                    ui.tooltip('Copy the log file path.')
+
+            ui.label('The file is replaced at every start, so reproduce the problem, '
+                     'then close the app and send the file.') \
+                .classes('text-xs opacity-60')
 
     def _rules_section(self, app):
         """Render the 'Command Rules' card: labels a bot writes into its own
@@ -235,7 +300,7 @@ class SettingsArea(ChatArea):
             snippet()
 
     @staticmethod
-    def _copy(text: str) -> None:
+    def _copy(text: str, what: str = 'Prompt snippet') -> None:
         """Copy ``text`` to the clipboard from the webview.
 
         NiceGUI 1.4 has no clipboard helper, so this goes through JS.
@@ -257,7 +322,7 @@ class SettingsArea(ChatArea):
                 document.body.removeChild(el);
             }}
         ''')
-        notify_and_log('Prompt snippet copied.', type='positive')
+        notify_and_log(f'{what} copied.', type='positive')
 
     def _gsi_section(self, app):
         """Full-width Game State Integration setup card.
@@ -357,16 +422,39 @@ class SettingsArea(ChatArea):
         talk. This card mirrors it: a refreshable body redrawn whenever the roster
         version changes (a ~1s timer polls it), with toggles writing straight back
         into ``app.roster`` and a Clear button to forget everyone.
+
+        Each row also carries a "this is me" button. The Steam name is read from
+        Steam at startup, but a second account or a name change leaves it wrong or
+        blank, and the app needs it twice over: to skip your own messages, and to
+        spot a Human Control reply landing in chat. Promoting a row fixes both,
+        saves the name, and drops that row from the roster.
         """
+
+        def promote(name):
+            """Make this roster name our own: save it and stop answering it."""
+            app.steam_nick = name
+            app.save_app_setting('steam_nick', name)
+            app.roster.pop(name, None)
+            app.roster_version += 1
+            roster_list.refresh()
+            notify_and_log(f'"{name}" is now your Steam name.', type='positive')
 
         @ui.refreshable
         def roster_list():
+            if app.steam_nick:
+                ui.badge(f'You: {app.steam_nick}').props('outline color=primary')
             if not app.roster:
                 ui.label('No one has talked yet.').classes('text-sm text-grey')
                 return
             for name in app.roster:
-                ui.switch(name, value=app.roster[name],
-                          on_change=lambda e, n=name: app.roster.__setitem__(n, e.value)).props('dense')
+                with ui.row().classes('items-center justify-between w-full flex-nowrap gap-2'):
+                    ui.switch(name, value=app.roster[name],
+                              on_change=lambda e, n=name: app.roster.__setitem__(n, e.value)) \
+                        .props('dense').classes('min-w-0')
+                    me_btn = ui.button(icon='person', on_click=lambda _, n=name: promote(n)) \
+                        .props('flat dense round size=sm')
+                    with me_btn:
+                        ui.tooltip(f'This is me: use "{name}" as your Steam name.')
 
         def clear():
             app.roster.clear()

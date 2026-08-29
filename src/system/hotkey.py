@@ -50,12 +50,18 @@ class HotkeyManager:
         if not key:
             return True
         if keyboard is None or self._callback is None:
+            logger.warning(f'Cannot register the toggle hotkey {key!r}: '
+                           f'keyboard library loaded={keyboard is not None}, '
+                           f'callback set={self._callback is not None}.')
             return False
         try:
             self._handler = keyboard.add_hotkey(key, self._callback)
+            logger.info(f'Toggle hotkey registered: {key!r}')
             return True
         except Exception as e:
-            logger.error(f"Failed to register hotkey {key!r}: {e}")
+            # Usually "this needs admin" or a key name the library rejects.
+            logger.error(f'Failed to register the toggle hotkey {key!r}: '
+                         f'{type(e).__name__}: {e}')
             return False
 
     def clear(self) -> None:

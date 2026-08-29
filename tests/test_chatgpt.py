@@ -102,6 +102,21 @@ def test_generate_without_client_notifies_and_returns_none():
     assert area.notifications, 'expected a notification when client is missing'
 
 
+def test_generate_records_the_exchange_for_the_tab():
+    area = make_area(reply='sit down')
+    run(area.generate('ez noob', app=None))
+    assert len(area.transcript.entries) == 1
+    entry = area.transcript.entries[0]
+    assert (entry.said, entry.replied) == ('ez noob', 'sit down')
+
+
+def test_failed_generate_records_nothing():
+    area = make_area()
+    area.client = None
+    run(area.generate('hi', app=None))
+    assert area.transcript.entries == []
+
+
 def test_clear_history_empties_history():
     area = make_area()
     area.history = [{'role': 'user', 'content': 'x'}]

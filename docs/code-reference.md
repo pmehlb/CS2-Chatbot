@@ -9,8 +9,9 @@ src/
   main.py          entrypoint
   app_state.py     shared state
   core.py          the chat loop
+  logsetup.py      the debug-log switch + the startup environment snapshot
   rules.py         command-label parsing applied to every reply
-  ui/              the NiceGUI shell + shared GUI helpers (gui, ui_util)
+  ui/              the NiceGUI shell + shared GUI parts (gui, ui_util, transcript)
   system/          Windows / registry / VDF / GSI helpers (winutil, hotkey, gsi)
   areas/           pluggable AI behaviors
 ```
@@ -20,12 +21,34 @@ import ...`, `from system import winutil`, etc.)
 
 ## `main.py`: entrypoint
 
-Configures `DEBUG` logging (to `cs2_chatbot_debug.log` and the terminal),
-computes the CS2 paths from the registry, builds the shared `AppState`, creates
-the areas and the `LogTailer`, builds the GUI, sets up GSI (token + `/gsi`
-route), registers the 0.1s chat-loop timer, runs the startup checks, and finally
-calls `ui.run(native=True, ...)` to open the 840x600 window on port `GSI_PORT`.
-Runs under `if __name__ == "__main__":`.
+Reads the `debug_log` setting straight from the settings file and hands it to
+`logsetup.configure()` **before anything else runs**, so a failure during
+startup still lands in the log. Then computes the CS2 paths from the registry,
+builds the shared `AppState`, creates the areas and the `LogTailer`, builds the
+GUI, sets up GSI (token + `/gsi` route), registers the 0.1s chat-loop timer,
+runs the startup checks, writes the environment snapshot
+(`logsetup.log_environment`), and finally calls `ui.run(native=True, ...)` to
+open the 840x600 window on port `GSI_PORT`. Runs under
+`if __name__ == "__main__":`.
+
+## `logsetup.py`: the debug log
+
+One switch owns the log file: while Settings > Debug Log is off, no file is
+written at all. The terminal handler is separate and always on when there is a
+console to write to (a windowed build has none, so it is skipped).
+
+| Function | Purpose |
+|----------|---------|
+| `configure(path, enabled)` | Installs the handlers once at startup. Returns the state the log actually reached (`False` if the file could not be opened). |
+| `set_enabled(enabled)` | Attaches or detaches the file handler at runtime, so the Settings switch takes effect without a restart. Returns the state reached. |
+| `is_enabled()` / `log_path()` | Whether a file is being written, and where it goes. |
+| `log_environment(app)` | Writes the block every bug report needs: build, versions, paths, `-condebug`, admin, areas and timing settings. Called at startup and again whenever the log is switched on mid-session. |
+
+The file is truncated once per run, on the first attach, so turning the switch
+off and on again appends instead of discarding the earlier half. Third-party
+loggers (`httpx`, `uvicorn.access`, the API clients) are turned down in
+`NOISY_LOGGERS`: they would otherwise bury the app's own lines and can log
+request details that carry an API key.
 
 ## `system/winutil.py`: Windows helpers
 
@@ -98,7 +121,9 @@ detection), and `gsi_last_seen` (the `time.monotonic()` of the last valid GSI
 POST, for the connection light). For the **exec light** it holds `can_exec`
 (green when a reply has been written to `message.cfg`, red while processing),
 `cfg_written`, and `exec_state_cb` (the GUI callback fired when `can_exec`
-changes). Two GUI handles are set during `gui.build`: `theme` (the
+changes). Under Human Control (`auto_press` off) `pending_sends` holds the chat
+text the app wrote and still waits to see in chat, which keeps the light green
+until the message lands. It is runtime only. Two GUI handles are set during `gui.build`: `theme` (the
 `ui.dark_mode()` handle) and `open_settings` (a callable that jumps to the
 Settings tab).
 
@@ -116,12 +141,17 @@ cooldown, auto-press, speaker attribution, toggle key, command `rules`,
 | Symbol | Purpose |
 |--------|---------|
 | `LogTailer` | Incrementally tails `console.log`: remembers a byte offset and yields only newly-appended lines via `new_lines()`. `seek_to_end()` skips pre-launch chat; a shrunken file (CS2 recreates the log each launch) resets the offset; a half-written final line is buffered until its newline arrives. |
-| `extract_latest_message(tailer, steam_nick, app)` | Drains the tailer, registers each new `[ALL]`/`[T]`/`[CT]` speaker (other than `steam_nick`) into `app.roster` defaulting to "respond", and returns `(message, channel, name)` for the newest message from a speaker still toggled on (`channel` is `'all'` or `'team'`, `name` is the clean display name), or `(None, None, None)`. |
+| `extract_latest_message(tailer, steam_nick, app)` | Drains the tailer, registers each new `[ALL]`/`[T]`/`[CT]` speaker (other than `steam_nick`) into `app.roster` defaulting to "respond", and returns `(message, channel, name)` for the newest message from a speaker still toggled on (`channel` is `'all'` or `'team'`, `name` is the clean display name), or `(None, None, None)`. A line from `steam_nick` is not answered, but goes to `note_own_chat_line` so Human Control learns the reply reached chat. |
 | `attribute_message(message, name, app, area)` | When `attribute_speakers` is on and the area opts in (`attribute_speaker`, default `True`), prefixes the message with `[Name] said: ` so AI areas can track the speaker; the Command Bot, Mimic, and Reverser opt out. Returns the message unchanged otherwise. |
-| `chat_command_lines(reply, channel, char_limit)` | Pure helper: turns a `str` or `list[str]` reply into the ordered `message.cfg` command lines, cleaning each (quotes -> `''`, newlines -> spaces), chunking to `char_limit`, and prefixing with `say` (all) or `say_team` (team). |
-| `send_to_game(reply, app, channel='all')` | Waits the "thinking" pause, then writes each `chat_command_lines(...)` line into `message.cfg` and (only while CS2 is the foreground window) presses `bind_key` (when `auto_press` is on). Flips the exec light red while sending, green when done. Accepts a `str` or `list[str]` reply. |
-| `write_message_cfg(reply, app, channel='all')` | Writes a whole reply to `message.cfg` as one file (every `say` line at once) so a single in-game `exec` sends the block. Used by the Command Bot's "Send help to chat" button, a manual kickoff that runs while the GUI, not CS2, is focused. |
-| `set_exec_state(app, ready)` | Flips `app.can_exec` and notifies the GUI only when the state changes (green once a reply is written, red while processing). |
+| `chat_message_chunks(reply, char_limit)` | Pure helper: turns a `str` or `list[str]` reply into the exact chat text chunks, cleaning each (quotes -> `''`, newlines -> spaces) and slicing to `char_limit`. The text carries no `say` verb, so Human Control can match it against the chat lines that come back in `console.log`. |
+| `chat_command_lines(reply, channel, char_limit)` | Pure helper: prefixes each `chat_message_chunks(...)` chunk with `say` (all) or `say_team` (team) to give the ordered `message.cfg` command lines. |
+| `human_control(app)` | `True` while the human fires the reply, which is `auto_press` turned off. |
+| `send_to_game(reply, app, channel='all')` | Hands the reply to CS2. With `auto_press` on, it waits the "thinking" pause, then writes one `say` line at a time and presses `bind_key` for each (only while CS2 is the foreground window). Under Human Control it skips that pause (the keypress sets the timing), writes every line in one file, presses nothing, and records the chunks in `app.pending_sends`. Turns the exec light green when done. Accepts a `str` or `list[str]` reply. |
+| `write_message_cfg(reply, app, channel='all')` | Writes a whole reply to `message.cfg` as one file (every `say` line at once) so a single in-game `exec` sends the block. Used by the Command Bot's "Send help to chat" button, a manual kickoff that runs while the GUI, not CS2, is focused. Under Human Control it also fills `app.pending_sends`. |
+| `clear_message_cfg(app)` | Empties `message.cfg` so an early keypress cannot fire a stale reply. Logs and ignores an `OSError`, because a locked file is no reason to drop a reply. |
+| `begin_reply(app)` | Starts a reply: exec light red, and under Human Control an empty `pending_sends` and an empty `message.cfg`. The newest reply wins, so anything still waiting goes away here. |
+| `note_own_chat_line(app, text)` | Removes one matching chunk from `app.pending_sends` when our own chat line comes back through the log, and turns the light red once the list empties. Matching the text, not only the nick, keeps your own typing from clearing a waiting reply. |
+| `set_exec_state(app, ready)` | Flips `app.can_exec` and notifies the GUI only when the state changes (green once a reply is written, red while processing). Under Human Control green also means "not sent yet". |
 | `cooldown_active(app, now)` | Returns `True` when the global reply cooldown is enabled and `cooldown_ms` hasn't elapsed since `app.last_reply_at`. One cooldown applies across every area; set in Settings > Logic. |
 | `handle_tick(app)` | One timer tick: always drains the tailer (keeping the offset current), then, if the bot is on, the active area is ready, and the global cooldown isn't active, handles output. If the active area `consumes_events`, it first pops the newest pending GSI event (dropping stale ones, via `_next_event`) and reacts via `_react_to_event`/`generate_event`, which takes priority over chat; otherwise it optionally tags the message with the speaker (`attribute_message`) and asks `active_area.generate(...)` for a chat reply. Both paths then run the reply through `rules.apply_rules(reply, app.rules)` before sending via `send_to_game` and recording `last_reply_at` — so a reply silenced by a command label costs no keystrokes and starts no cooldown. |
 
@@ -151,13 +181,13 @@ Each area bundles its own tab UI, its response handler, and its state.
 | `base.py` | `ChatArea` | The contract: `key` / `label` / `icon` attributes, `build_tab(app)`, `tokens()` (the `TokenField`s the area needs), `is_ready()` returning `(ok, reason)`, and an async `generate(message, app)` returning the reply (a `str`, a `list[str]`, or `None`). Class flags: `answerable` (default `True`; `False` for utility tabs like Settings that idle the loop), `attribute_speaker` (default `True`; `False` for command/transform areas that opt out of the `[Name] said: ` prefix), and `consumes_events` (default `False`; `True` for areas that react to GSI game events). Also an async `generate_event(event, app)` (default returns `None`) that produces a taunt for a `system.gsi.TiltEvent`; the chat loop only pops events for areas that opt in. |
 | `event_prompts.py` | (functions) | `event_to_prompt(event)`: pure. Turns a `system.gsi.TiltEvent` into a one-line AI instruction (e.g. "I just got a 4-kill... brag in all chat"). Shared by Tilt Bot's AI taunt source and the AI areas' event reactions; unknown kinds/missing `{tokens}` degrade to a generic brag rather than raising. |
 | `characterai.py` | `CharacterAIArea` | The Character.AI behavior: two token fields (C.AI token plus the `web-next-auth` cookie needed for name search), a search box that either loads a pasted character ID directly or searches by name, a persisted "recents" grid of previously selected characters, a reset-memory button, and `generate()` via `client.chat.send_message(...)`. `is_ready()` requires a token and a selected character. An opt-in "Also react to my game events" toggle sets instance `consumes_events` and routes `generate_event()` through the selected character. |
-| `chatgpt.py` | `ChatGPTArea` | Replies via OpenAI's Chat Completions API: a "Persona" card (model dropdown, temperature slider, system "first prompt", clear-conversation button) plus a rolling history. `is_ready()` requires an OpenAI API key (in Settings > API Tokens). An opt-in "Also react to my game events" toggle sets instance `consumes_events` and routes `generate_event()` through this persona. |
-| `claude.py` | `ClaudeArea` | Replies via Anthropic's Messages API: a "Persona" card with a model dropdown (Opus 5/4.8/4.7, Sonnet 5/4.6, Haiku 4.5) and per-model tuning, a system prompt, clear-conversation button, and rolling history. `MODEL_CAPS` records what each model accepts, since sending the wrong control is a 400: temperature (rejected on Opus 5/4.8/4.7 and Sonnet 5), which effort levels exist (no `xhigh` on Sonnet 4.6; effort errors outright on Haiku), and whether the model thinks unless told not to. Opus 5 and Sonnet 5 do, and `MAX_TOKENS` caps thinking *plus* reply text, so those two are sent `thinking: disabled` or a 150-token budget gets spent reasoning and the chat line arrives truncated; Opus 5 only accepts that below `xhigh`, so its effort list stops at `high`. Controls the chosen model doesn't support are disabled in the UI. `is_ready()` requires an Anthropic API key. (Named `claude.py` so it doesn't shadow the `anthropic` SDK package.) Same opt-in "Also react to my game events" toggle as the other AI areas. |
+| `chatgpt.py` | `ChatGPTArea` | Replies via OpenAI's Chat Completions API: a "Persona" card (model dropdown, temperature slider, system "first prompt", clear-conversation button) plus a rolling history, over a "Conversation" block (`ui/transcript.py`) logging the last 3 exchanges. `is_ready()` requires an OpenAI API key (in Settings > API Tokens). An opt-in "Also react to my game events" toggle sets instance `consumes_events` and routes `generate_event()` through this persona. |
+| `claude.py` | `ClaudeArea` | Replies via Anthropic's Messages API: a "Persona" card with a model dropdown (Opus 5/4.8/4.7, Sonnet 5/4.6, Haiku 4.5) and per-model tuning, a system prompt, clear-conversation button, and rolling history, over a "Conversation" block (`ui/transcript.py`) logging the last 3 exchanges. `MODEL_CAPS` records what each model accepts, since sending the wrong control is a 400: temperature (rejected on Opus 5/4.8/4.7 and Sonnet 5), which effort levels exist (no `xhigh` on Sonnet 4.6; effort errors outright on Haiku), and whether the model thinks unless told not to. Opus 5 and Sonnet 5 do, and `MAX_TOKENS` caps thinking *plus* reply text, so those two are sent `thinking: disabled` or a 150-token budget gets spent reasoning and the chat line arrives truncated; Opus 5 only accepts that below `xhigh`, so its effort list stops at `high`. Controls the chosen model doesn't support are disabled in the UI. `is_ready()` requires an Anthropic API key. (Named `claude.py` so it doesn't shadow the `anthropic` SDK package.) Same opt-in "Also react to my game events" toggle as the other AI areas. |
 | `tiltbot.py` | `TiltBotArea` | The Tilt Bot: `consumes_events = True`, so it reacts to GSI game events via `generate_event(event, app)`. Per-section **Taunt source** and **Clapback source** dropdowns (`Canned`/C.AI/ChatGPT/Claude): canned uses the editable line pools, an AI source borrows that area's `generate()` via `app.area_by_key` (with a canned fallback on error). `is_ready()` blocks power-on if a *used* section points at an AI brain that isn't ready. Tab is a 2-column layout (Game events \| Chat) over a full-width "Requires Game State Integration" note whose button calls `app.open_settings` to jump to the GSI setup; per-event checkboxes and editable + restorable line pools live in the two cards. |
 | `commands.py` | `CommandBotArea` | "C2" command bot: parses `!`-prefixed chat via a small ordered registry (`!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, `!ticker`) with per-command enable checkboxes. `!dadjoke`/`!fact`/`!quote`/`!fortunecookie` hit free keyless web APIs and `!ticker` hits AlphaVantage (with an in-source free-tier key), all via `httpx`; the rest are local. The reply cooldown is the global Settings option, not per-area. A "Send help to chat" button writes the help block out now via `core.write_message_cfg`. |
 | `mimic.py` | `MimicArea` | Echoes the last message back with randomized capitalization. No configuration; the minimal example of an area with only a `generate()` method. |
 | `string_reverser.py` | `StringReverserArea` | Sends the last message back reversed. An editable, persisted censor list find/replaces whole words (case-insensitive) first, so a replacement un-reverses to clean text on the reader's end. |
-| `settings.py` | `SettingsArea` | The Settings tab (`answerable = False`, so it idles the bot). A 2-col card grid sits over the full-width **Command Rules** and **Game State Integration (GSI)** cards. The grid holds **Logic** (the delay/jitter timing fields, the reply cooldown, auto-press, the "Attribute messages to speakers" toggle, and the global toggle-keybind row), **Known Players** (live roster toggles), **API Tokens** (from each area's `tokens()`), and **Appearance** (theme + accent). **Command Rules** edits the global `([LABEL])` -> action list (see `rules.py`): a label box, an action dropdown, a "Say this" box that enables only for the `say` action, the current rules with delete buttons, and a collapsible prompt snippet with a copy button. Rules are global, so they persist in the `app` namespace via `save_app_setting('rules', ...)` rather than any one area's. The GSI card has "Install GSI config" (`gsi.write_gsi_cfg`), the endpoint/config paths, and the live connection light (`gsi.is_receiving`). GSI is app-wide (Tilt Bot plus opt-in AI areas), so its setup lives here. The keybind row records a key via `app.hotkeys.record()` and persists it as `toggle_key`. |
+| `settings.py` | `SettingsArea` | The Settings tab (`answerable = False`, so it idles the bot). A 2-col card grid sits over the full-width **Command Rules** and **Game State Integration (GSI)** cards. The grid holds **Logic** (the delay/jitter timing fields, the reply cooldown, auto-press, the "Attribute messages to speakers" toggle, the global toggle-keybind row, and an amber warning shown only while `steam_nick` is empty), **Known Players** (live roster toggles, plus a person icon on each row that promotes that name to `steam_nick`, saves it, and drops the row), **API Tokens** (from each area's `tokens()`), and **Appearance** (theme + accent). **Command Rules** edits the global `([LABEL])` -> action list (see `rules.py`): a label box, an action dropdown, a "Say this" box that enables only for the `say` action, the current rules with delete buttons, and a collapsible prompt snippet with a copy button. Rules are global, so they persist in the `app` namespace via `save_app_setting('rules', ...)` rather than any one area's. The GSI card has "Install GSI config" (`gsi.write_gsi_cfg`), the endpoint/config paths, and the live connection light (`gsi.is_receiving`). GSI is app-wide (Tilt Bot plus opt-in AI areas), so its setup lives here. The keybind row records a key via `app.hotkeys.record()` and persists it as `toggle_key`. |
 | `__init__.py` | (functions) | `build_areas()` returns the list of areas; the first one is selected on startup. |
 
 ### Adding a new area
@@ -171,9 +201,22 @@ automatically.
 
 | Symbol | Purpose |
 |--------|---------|
-| `build(app)` | Builds the splitter, the vertical tab bar (one tab per area + a Settings tab), the power button, and the exec-status light. Switching to a provider tab makes that area active; switching to Settings sets `active_area = None`, so the loop idles. Wires `app.exec_state_cb` to recolor the exec light and `app.open_settings` to switch to the Settings tab (used by Tilt Bot's GSI notice). Also wires the global toggle hotkey: registers the saved `toggle_key` via `app.hotkeys` and runs a 0.1s timer that, when the hotkey sets `toggle_requested`, clicks the power button (same gate/notify path). |
+| `build(app)` | Builds the splitter, the vertical tab bar (one tab per area + a Settings tab), the power button, and the exec-status light. Switching to a provider tab makes that area active; switching to Settings sets `active_area = None`, so the loop idles. Wires `app.exec_state_cb` to recolor the exec light and `app.open_settings` to switch to the Settings tab (used by Tilt Bot's GSI notice). Loads the saved `app` settings, where a promoted `steam_nick` wins over the name `main` read from Steam. Also wires the global toggle hotkey: registers the saved `toggle_key` via `app.hotkeys` and runs a 0.1s timer that, when the hotkey sets `toggle_requested`, clicks the power button (same gate/notify path). |
 | `_gate_power(...)` | The power toggle's gate: refuses to turn on unless an area is open and its `is_ready()` passes, notifying the reason otherwise. |
 | `run_startup_checks(app)` | Shows the "not admin" and "no -condebug" startup warnings. |
+
+## `ui/transcript.py`: the Conversation block
+
+The live "what came in / what went out" log shown under the ChatGPT and Claude
+persona controls. Shared, so any area can adopt it: keep a `Transcript`, call
+`record()` from `generate()`, call `build()` once in `build_tab`.
+
+| Symbol | Purpose |
+|--------|---------|
+| `Transcript.record(message, reply)` | Logs one exchange (state only — no widget calls, so it's safe from the chat loop): splits the `[Name] said: ` prefix back off via `split_speaker`, flattens a `list[str]` reply to the lines it'll appear as in chat, stamps the local time, trims to `max_entries` (3) and bumps `version`. |
+| `Transcript.clear()` | Empties the log. Separate from an area's "Clear conversation" button, which forgets the model's history instead. |
+| `Transcript.build(title)` | Renders the card: a title badge, a Clear button, and a height-capped scroll box listing the exchanges newest-first (speaker + message + time over the bot's reply, an empty reply shown as *(silent)*). Because `generate()` runs outside any widget context, the card doesn't refresh from `record()` — a 1s timer watches `version` and redraws only on a change, the same idiom as Settings' Known Players roster. |
+| `split_speaker(message)` | `"[Name] said: hi"` -> `('Name', 'hi')`; falls back to `('Them', message)` when the attribute-speakers prefix isn't there. |
 
 ## `ui/ui_util.py`: shared GUI helpers
 
@@ -189,7 +232,9 @@ imports the areas) and creating a cycle.
 
 ## Logging & settings files
 
-- `cs2_chatbot_debug.log`: verbose `DEBUG` log, recreated each run.
+- `cs2_chatbot_debug.log`: verbose `DEBUG` log, next to the executable. Written
+  only while Settings > Debug Log is on (off by default), and recreated each run.
 - `chatbot_settings.json`: per-area settings, e.g. `{ "characterai": { "token": "..." } }`.
+  The `app` namespace holds `debug_log`, the switch above.
 
 Both are git-ignored.
