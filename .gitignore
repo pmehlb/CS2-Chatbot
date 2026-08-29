@@ -224,6 +224,8 @@ cs2_chatbot_debug.log
 chatbot_settings.json
 chatbot_settings.json.bak
 *.bak
+# Local-only folder: the personal settings copy that build.ps1 -Run picks up
+.for_personal_use/
 
 # PyInstaller build artifacts
 # Keep our build spec file - it's required for proper dependency inclusion

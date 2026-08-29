@@ -3,13 +3,16 @@
 
 param(
     [switch]$Clean,
+    [switch]$Run,
     [switch]$Help
 )
 
 if ($Help) {
     Write-Host "CS2-Chatbot Build Script" -ForegroundColor Green
-    Write-Host "Usage: .\packaging\build.ps1 [-Clean] [-Help]" -ForegroundColor White
+    Write-Host "Usage: .\packaging\build.ps1 [-Clean] [-Run] [-Help]" -ForegroundColor White
     Write-Host "  -Clean  Clean build artifacts before building"
+    Write-Host "  -Run    After a successful build, copy .for_personal_use\chatbot_settings.json"
+    Write-Host "          into release\ (if it is there) and start the executable"
     Write-Host "  -Help   Show this help message"
     exit 0
 }
@@ -61,6 +64,39 @@ if ($exitCode -eq 0 -and (Test-Path ".\dist\CS2-Chatbot.exe")) {
     Write-Host "Build completed successfully!" -ForegroundColor Green
     Write-Host "Executable: .\release\CS2-Chatbot.exe ($sizeInMB MB)" -ForegroundColor Cyan
     Write-Host "Ready for distribution!" -ForegroundColor Green
+
+    if ($Run) {
+        # The app reads chatbot_settings.json from the folder the .exe sits in,
+        # so a personal copy dropped into release\ gives the fresh build the
+        # real API keys and rules. Every step here is optional: a missing file
+        # or a locked file only costs the settings, and the app writes its own
+        # defaults on first launch.
+        $personalSettings = ".\.for_personal_use\chatbot_settings.json"
+        if (Test-Path $personalSettings) {
+            try {
+                Copy-Item $personalSettings ".\release\chatbot_settings.json" -Force -ErrorAction Stop
+                Write-Host ""
+                Write-Host "Copied personal settings into .\release\" -ForegroundColor Cyan
+            } catch {
+                Write-Host ""
+                Write-Host "Could not copy personal settings: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host "Starting anyway - the app uses whatever settings are in release\." -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host ""
+            Write-Host "No $personalSettings - starting with the settings already in release\." -ForegroundColor Yellow
+        }
+
+        Write-Host "Starting CS2-Chatbot..." -ForegroundColor Green
+        try {
+            $releaseDir = (Resolve-Path ".\release").Path
+            Start-Process -FilePath (Join-Path $releaseDir "CS2-Chatbot.exe") `
+                          -WorkingDirectory $releaseDir -ErrorAction Stop
+        } catch {
+            Write-Host "Could not start the executable: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+        }
+    }
 } else {
     Write-Host ""
     Write-Host "Build failed!" -ForegroundColor Red
