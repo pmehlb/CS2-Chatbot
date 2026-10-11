@@ -42,6 +42,8 @@ class FakeApp:
         self.roster = {}
         self.roster_version = 0
         self.gsi_events = deque(maxlen=8)
+        self.chat_queue = deque(maxlen=32)
+        self.pending_sends = []
         self.cooldown_enabled = False
         self.cooldown_ms = 0
         self.last_reply_at = 0.0
@@ -89,3 +91,76 @@ def test_handle_tick_ignores_events_when_area_opts_out(monkeypatch):
 
     assert app.sent == []
     assert app.gsi_events  # untouched
+
+
+class TimedArea(FakeArea):
+    """An area whose timer has a line due (like the blackjack deal)."""
+    consumes_events = False
+
+    def __init__(self, due):
+        super().__init__()
+        self.due = due
+        self.chat_seen = []
+
+    async def generate_timed(self, app):
+        due, self.due = self.due, None
+        return due
+
+    async def generate(self, message, app):
+        self.chat_seen.append(message)
+        return 'chat reply'
+
+
+class OneLineTailer:
+    def __init__(self, line):
+        self.lines = [line]
+
+    def new_lines(self):
+        lines, self.lines = self.lines, []
+        return iter(lines)
+
+
+def test_handle_tick_sends_due_timer_line_to_its_channel(monkeypatch):
+    area = TimedArea(due=(['deal line'], 'team'))
+    app = FakeApp(area)
+
+    async def fake_send(reply, app_, channel='all'):
+        app_.sent.append((reply, channel))
+
+    monkeypatch.setattr(core, 'send_to_game', fake_send)
+    asyncio.run(core.handle_tick(app))
+
+    assert app.sent == [(['deal line'], 'team')]
+    assert app.last_reply_at > 0
+
+
+def test_due_timer_takes_the_tick_over_chat(monkeypatch):
+    area = TimedArea(due=('turn over', 'all'))
+    app = FakeApp(area)
+    app.tailer = OneLineTailer('Bob‎  [ALL] Bob‎: !join')
+
+    async def fake_send(reply, app_, channel='all'):
+        app_.sent.append((reply, channel))
+
+    monkeypatch.setattr(core, 'send_to_game', fake_send)
+    asyncio.run(core.handle_tick(app))
+
+    assert app.sent == [('turn over', 'all')]
+    assert area.chat_seen == []
+
+
+def test_timer_waits_out_the_cooldown(monkeypatch):
+    area = TimedArea(due=('deal line', 'all'))
+    app = FakeApp(area)
+    app.cooldown_enabled = True
+    app.cooldown_ms = 60_000
+    app.last_reply_at = core.time.monotonic()
+
+    async def fake_send(reply, app_, channel='all'):
+        app_.sent.append((reply, channel))
+
+    monkeypatch.setattr(core, 'send_to_game', fake_send)
+    asyncio.run(core.handle_tick(app))
+
+    assert app.sent == []
+    assert area.due == ('deal line', 'all')    # not consumed: sent once the cooldown ends

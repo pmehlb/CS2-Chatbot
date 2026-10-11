@@ -64,7 +64,10 @@ Each tick:
    `console.log` since the last tick, and `core.extract_latest_message` scans
    them for chat lines: `  [ALL] ` for all-chat, `  [T] ` / `  [CT] ` for team
    chat. It keeps the newest one and remembers its channel so the reply goes back
-   to the same place. On startup the tailer skips whatever is already in the file;
+   to the same place. An area can claim some lines for a queue instead
+   (`queues_message`). The Command Bot claims the blackjack commands, so two
+   `!join` lines in one tick both count. The loop answers the queue one reply
+   per tick, oldest first. On startup the tailer skips whatever is already in the file;
    if CS2 recreates the log (it does each launch), it resets and keeps following.
 
 2. **Filter.** The line splits on the first `': '` into sender and message. The

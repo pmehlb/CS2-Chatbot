@@ -62,6 +62,8 @@ class FakeApp:
         self.roster_version = 0
         self.attribute_speakers = False
         self.gsi_events = deque(maxlen=8)
+        self.chat_queue = deque(maxlen=32)
+        self.pending_sends = []
         self.cooldown_enabled = False
         self.cooldown_ms = 0
         self.last_reply_at = 0.0

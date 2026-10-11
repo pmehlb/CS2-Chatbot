@@ -72,3 +72,22 @@ class ChatArea:
         ``event`` is a system.gsi.TiltEvent. Default: areas ignore events.
         """
         return None
+
+    def queues_message(self, message: str) -> bool:
+        """True to answer ``message`` in arrival order instead of newest-wins.
+
+        The chat loop normally answers only the newest line of a tick. A line
+        this claims goes onto a queue instead, and the loop answers the queue
+        one reply per tick, oldest first. Default: nothing is queued.
+        """
+        return False
+
+    async def generate_timed(self, app):
+        """Produce a message nobody typed a command for, or return None.
+
+        The chat loop asks on every tick it is allowed to send (bot on, this
+        tab active, cooldown clear), before it answers chat. Return
+        ``(reply, channel)`` when a timer is due -- the blackjack deal or a
+        turn running out. Default: areas have no timers.
+        """
+        return None

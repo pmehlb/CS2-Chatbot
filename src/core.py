@@ -156,7 +156,7 @@ def _channel_for(line: str):
     return None, None
 
 
-def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
+def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None):
     """Drain the tailer and return the newest answerable chat line as
     ``(message, channel, name)`` where channel is 'all' or 'team' and name is the
     clean display name of the speaker.
@@ -166,6 +166,10 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
     default of "respond" the first time they're seen. Messages from people whose
     roster toggle is off are skipped, so we fall through to the newest message
     from someone still allowed.
+
+    ``queues`` is the active area's ``queues_message`` (or None). A line it
+    claims goes onto ``app.chat_queue`` to be answered in arrival order, and
+    takes no part in the newest-wins pick.
 
     Returns (None, None, None) if there's nothing to answer.
     """
@@ -201,8 +205,13 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app):
             app.roster_version += 1
             logger.info(f'New player in chat: {name!r} (answering them by default)')
 
-        # Only the newest message from an allowed speaker is answerable.
-        if app.roster[name]:
+        # Only the newest message from an allowed speaker is answerable --
+        # unless the area queues it (the blackjack commands).
+        if app.roster[name] and queues is not None and queues(message):
+            app.chat_queue.append((message, channel, name))
+            logger.debug(f'[{channel}] {name}: {message!r} (queued, '
+                         f'{len(app.chat_queue)} waiting)')
+        elif app.roster[name]:
             logger.debug(f'[{channel}] {name}: {message!r}')
             latest = message
             latest_channel = channel
@@ -472,53 +481,71 @@ async def _react_to_event(app, area, event) -> None:
     app.last_reply_at = time.monotonic()
 
 
-async def handle_tick(app) -> None:
-    """One timer tick: extract -> generate -> send."""
-    # Always drain the tailer so the offset (and roster) stays current even while off.
-    message, channel, name = extract_latest_message(app.tailer, app.steam_nick, app)
+async def _run_timers(app, area) -> bool:
+    """Send whatever the area's timers have due. True if a reply went out.
 
-    # Each guard below explains itself, but only when a message was actually
-    # waiting: the loop ticks ten times a second and an idle tick tells nobody
-    # anything. "Why did it not answer that?" is the question worth answering.
-    if not app.powered_on or app.active_area is None:
-        if message is not None:
-            logger.debug('Not answering %r: %s', message,
-                         'the bot is switched off' if not app.powered_on
-                         else 'the open tab does not answer chat (Settings is a utility tab)')
-        return
+    Same path as a chat reply: exec light, command rules, send, cooldown.
+    """
+    generate_timed = getattr(area, 'generate_timed', None)
+    if generate_timed is None:
+        return False
+    try:
+        due = await generate_timed(app)
+    except Exception as e:
+        logger.error(f"Timer handler '{area.key}' failed: {e}")
+        logger.error(traceback.format_exc())
+        notify_and_log(f'Failed to send a timed message: {e}', type='negative')
+        return False
+    if not due:
+        return False
 
-    area = app.active_area
-    ready, reason = area.is_ready()
-    if not ready:
-        if message is not None:
-            logger.warning(f"[{area.key}] is not ready ({reason or 'no reason given'}), "
-                           f'so {message!r} goes unanswered.')
-        return
+    reply, channel = due
+    logger.debug(f'[{area.key}] timer fired with {reply!r}')
+    begin_reply(app)
+    reply = rules.apply_rules(reply, app.rules)
+    if not reply:
+        logger.debug('A command rule silenced the timed message.')
+        return False
+    await send_to_game(reply, app, channel)
+    app.last_reply_at = time.monotonic()
+    return True
 
-    # Global cooldown applies to both event taunts and chat replies.
-    now = time.monotonic()
-    if cooldown_active(app, now):
-        if message is not None:
-            remaining = app.cooldown_ms - (now - app.last_reply_at) * 1000
-            logger.debug(f'Cooldown has {remaining:.0f}ms left, so {message!r} goes unanswered.')
-        return
 
-    # GSI game-event reactions take priority over chat: they're time-sensitive
-    # (an ace taunt is worthless several rounds later). Only areas that opt in
-    # (consumes_events) ever pop the queue.
-    if getattr(area, 'consumes_events', False):
-        event = _next_event(app)
-        if event is not None:
-            await _react_to_event(app, area, event)
-            return
+def _reply_waiting(app) -> bool:
+    """True while a Human Control reply sits in message.cfg, not yet in chat.
 
-    if message is None:
-        return
+    The queue and the area timers hold until it goes out: the next reply would
+    overwrite it. Without a Steam nickname the app never sees its own lines come
+    back, so nothing is held.
+    """
+    return human_control(app) and bool(app.steam_nick) and bool(app.pending_sends)
 
-    # Who is talking, for areas that gate on identity. Set before generate() and
+
+async def _answer_queue(app, area) -> bool:
+    """Answer queued chat lines, oldest first, until one sends a reply.
+
+    A line that gets no reply (a !hitme out of turn) costs nothing, so the next
+    one goes in the same tick. True if a reply went out.
+    """
+    while app.chat_queue:
+        message, channel, name = app.chat_queue.popleft()
+        # The tab may have changed since the line was queued.
+        if not area.queues_message(message):
+            logger.debug(f'Dropped queued {message!r}: the open tab does not queue it.')
+            continue
+        if await _answer_chat(app, area, message, channel, name):
+            return True
+    return False
+
+
+async def _answer_chat(app, area, message, channel, name) -> bool:
+    """Generate and send the area's reply to one chat line. True if sent."""
+    # Who is talking and where, for areas that gate on identity or track a
+    # player (the blackjack table). Set before generate() and
     # separate from the optional speaker prefix below, which command areas
     # opt out of.
     app.last_speaker = name or ''
+    app.last_channel = channel or 'all'
 
     # Optionally tag the message with who said it, so AI chatbots can track the
     # speaker. Areas that parse/transform the raw text opt out (see helper).
@@ -540,7 +567,7 @@ async def handle_tick(app) -> None:
                      f'{(time.monotonic() - started) * 1000:.0f}ms: {type(e).__name__}: {e}')
         logger.error(traceback.format_exc())
         notify_and_log(f'Failed to generate a reply: {e}', type='negative')
-        return
+        return False
 
     logger.debug(f'[{area.key}] answered in {(time.monotonic() - started) * 1000:.0f}ms '
                  f'with {reply!r}')
@@ -556,7 +583,68 @@ async def handle_tick(app) -> None:
 
     if not reply:
         logger.debug('Nothing to send: the area returned no reply, or a rule dropped it.')
-        return
+        return False
 
     await send_to_game(reply, app, channel)
     app.last_reply_at = time.monotonic()
+    return True
+
+
+async def handle_tick(app) -> None:
+    """One timer tick: extract -> generate -> send."""
+    # Always drain the tailer so the offset (and roster) stays current even while
+    # off. Only the area that answers may queue lines, and only while the bot is on.
+    area = app.active_area if app.powered_on else None
+    queues = getattr(area, 'queues_message', None)
+    message, channel, name = extract_latest_message(app.tailer, app.steam_nick, app, queues)
+
+    # Each guard below explains itself, but only when a message was actually
+    # waiting: the loop ticks ten times a second and an idle tick tells nobody
+    # anything. "Why did it not answer that?" is the question worth answering.
+    if area is None:
+        app.chat_queue.clear()
+        if message is not None:
+            logger.debug('Not answering %r: %s', message,
+                         'the bot is switched off' if not app.powered_on
+                         else 'the open tab does not answer chat (Settings is a utility tab)')
+        return
+
+    ready, reason = area.is_ready()
+    if not ready:
+        if message is not None:
+            logger.warning(f"[{area.key}] is not ready ({reason or 'no reason given'}), "
+                           f'so {message!r} goes unanswered.')
+        return
+
+    # Global cooldown applies to every reply. Queued lines and area timers wait
+    # it out; the newest-wins chat line is dropped.
+    now = time.monotonic()
+    if cooldown_active(app, now):
+        if message is not None:
+            remaining = app.cooldown_ms - (now - app.last_reply_at) * 1000
+            logger.debug(f'Cooldown has {remaining:.0f}ms left, so {message!r} goes unanswered.')
+        return
+
+    # GSI game-event reactions take priority over chat: they're time-sensitive
+    # (an ace taunt is worthless several rounds later). Only areas that opt in
+    # (consumes_events) ever pop the queue.
+    if getattr(area, 'consumes_events', False):
+        event = _next_event(app)
+        if event is not None:
+            await _react_to_event(app, area, event)
+            return
+
+    # Queued lines (the blackjack commands) come next, one reply per tick in
+    # arrival order, then the area timers (the deal, a turn running out). The
+    # queue goes first so a !hitme typed before the turn ran out still counts.
+    # Like an event, either one takes this tick from the newest-wins chat line.
+    if not _reply_waiting(app):
+        if await _answer_queue(app, area) or await _run_timers(app, area):
+            if message is not None:
+                logger.debug(f'A queued or timed reply took this tick, so {message!r} '
+                             'goes unanswered.')
+            return
+
+    if message is None:
+        return
+    await _answer_chat(app, area, message, channel, name)
