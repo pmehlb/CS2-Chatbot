@@ -28,6 +28,12 @@ DADJOKE_UA = 'CS2-Chatbot (https://github.com/)'
 # JSON body with a 'Note'/'Information' key instead of data (see _cmd_ticker).
 ALPHAVANTAGE_KEY = 'JCFJ95WG36YQ7166'
 
+# !quote source. dummyjson has no length filter, so a long quote is re-rolled
+# a few times before the bot settles for it.
+QUOTE_URL = 'https://dummyjson.com/quotes/random'
+QUOTE_MAX_LEN = 130
+QUOTE_TRIES = 3
+
 EIGHTBALL_ANSWERS = [
     'It is certain.', 'It is decidedly so.', 'Without a doubt.',
     'Yes definitely.', 'You may rely on it.', 'As I see it, yes.',
@@ -180,12 +186,13 @@ class CommandBotArea(ChatArea):
 
     async def _cmd_quote(self, arg: str) -> Reply:
         try:
-            data = await _http_get_json(
-                'https://api.quotable.io/quotes/random?maxLength=130')
-            # quotable may return a single object or a one-element array.
-            if isinstance(data, list):
-                data = data[0]
-            return '[QUOTE] ' + (data.get('content') or '').strip()
+            for _ in range(QUOTE_TRIES):
+                data = await _http_get_json(QUOTE_URL)
+                text = (data.get('quote') or '').strip()
+                if len(text) <= QUOTE_MAX_LEN:
+                    break
+            author = (data.get('author') or '').strip()
+            return f'[QUOTE] {text} - {author}' if author else f'[QUOTE] {text}'
         except Exception as e:
             logger.warning(f'quote fetch failed: {e}')
             return "[QUOTE] couldn't fetch a quote right now"

@@ -224,11 +224,14 @@ def test_fact_failure_returns_error():
     assert out == "[FACT] couldn't fetch a fact right now"
 
 
-def test_quote_success_object_form():
+def test_quote_success():
     area = make_area()
+    urls = []
 
     async def fake_json(url, headers=None):
-        return {'content': 'The unexamined life is not worth living.'}
+        urls.append(url)
+        return {'id': 1, 'quote': 'The unexamined life is not worth living.',
+                'author': 'Socrates'}
 
     original = commands._http_get_json
     commands._http_get_json = fake_json
@@ -236,14 +239,16 @@ def test_quote_success_object_form():
         out = run(area.generate('!quote', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[QUOTE] The unexamined life is not worth living.'
+    assert out == '[QUOTE] The unexamined life is not worth living. - Socrates'
+    assert urls == [commands.QUOTE_URL]
 
 
-def test_quote_success_list_form():
+def test_quote_rerolls_a_long_quote():
     area = make_area()
+    replies = iter([{'quote': 'x' * (commands.QUOTE_MAX_LEN + 1)}, {'quote': 'Be kind.'}])
 
     async def fake_json(url, headers=None):
-        return [{'content': 'Be kind.'}]
+        return next(replies)
 
     original = commands._http_get_json
     commands._http_get_json = fake_json
