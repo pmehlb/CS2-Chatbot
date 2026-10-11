@@ -13,12 +13,13 @@ in `src/main.py` or `src/ui/gui.py`.
 | `bind_key` | `'p'` | The key the app simulates; **must match** your CS2 `bind <key> "exec message.cfg"`. |
 | `chat_char_limit` | `221` | Max characters per chat chunk (222 was observed being cut off). Long replies are split into pieces of this size. |
 | `chat_delay` | `0.5` | Seconds to wait between sending consecutive chunks. |
+| `MIN_CHAT_GAP` | `0.6` | Seconds the bot waits after a chat line from `steam_nick` (you) before it presses the key (`core.py`). CS2 drops a line from the account that comes sooner, with no error. Replies to other players go out at once. |
 | `response_delay_ms` | `0` | Fixed "thinking" pause (milliseconds) before the bot sends a reply. `0` disables it. Editable in Settings. |
 | `response_jitter_ms` | `0` | Random extra delay (milliseconds), between `0` and this value, added on top of `response_delay_ms` so the wait varies each time. Editable in Settings. |
 | `cooldown_enabled` | `False` | Whether the global reply cooldown is enforced. Editable in Settings. |
 | `cooldown_ms` | `3000` | Minimum milliseconds between any two replies (across all areas) while the cooldown is on. Editable in Settings. |
 | `auto_press` | `True` | When on, the app presses `bind_key` itself after writing `message.cfg`. When off (**Human Control**) the app writes the whole reply at once and presses no key. The exec light then means "ready to fire". It goes red again when your message reaches chat. Editable in Settings. |
-| `steam_nick` | read from Steam | Your in-game name. The app uses it to skip your own messages, and to spot a sent reply under Human Control. The registry gives the startup value. The person icon in Settings > Known Players saves a name that wins over it. |
+| `steam_nick` | read from Steam | Your in-game name. The app uses it to spot the echo of its own replies (never answered), to keep the chat gap after your lines, and to confirm a sent reply under Human Control. The Command Bot answers what you type. The other tabs ignore you. The registry gives the startup value. The person icon in Settings > Known Players saves a name that wins over it. |
 | `attribute_speakers` | `False` | When on, prefixes each message fed to the AI areas with `[Name] said: ` so replies can track the speaker. The Command Bot, Mimic, and Reverser opt out. Editable in Settings. |
 | `toggle_key` | `''` (unset) | Global hotkey that toggles the bot on/off, even while CS2 is focused. Recorded and cleared in Settings; persisted. |
 | `debug_log` | `False` (off) | The only control over the log file. While it is off, the app writes no log file at all. Turn it on in Settings > Debug Log and the file starts at once, without a restart. Persisted. |
@@ -31,6 +32,10 @@ in `src/main.py` or `src/ui/gui.py`.
 | `LOW_HP_THRESHOLD` | `20` | Max end-of-round HP that still counts as a "low-HP survival" event (`system/gsi.py`). |
 | `WIN_SCORE` | `13` | Round score that ends the match (MR12); `WIN_SCORE - 1` is match point. |
 | `GSI_FRESH_SECONDS` | `15` | A GSI POST within this many seconds counts as "receiving"; drives the Settings GSI connection light. |
+| `DEFAULT_DECKS` / `DEFAULT_TURN_SECONDS` / `DEFAULT_JOIN_SECONDS` | `6` / `15` / `15` | Blackjack defaults (`areas/blackjack.py`). The C2 tab changes all three, within `BJ_DECKS_RANGE` (1-8) and `BJ_SECONDS_RANGE` (5-120 s) in `areas/commands.py`. |
+| `LINE_LIMIT` | `200` | The blackjack players line wraps between entries past this many characters (`areas/blackjack.py`). It stays below `chat_char_limit`, so the chat chunker never cuts a name or a card. |
+| `CUT_FRACTION` | `0.25` | The blackjack cut card. A new round reshuffles the shoe when less than this share of it is left. |
+| `STALE_SECONDS` | `120` | A blackjack table whose timer is this many seconds overdue closes without a message. This happens when the bot was off or another tab was open. |
 
 > To change the bind key, edit `bind_key` **and** update your CS2 bind to match.
 
@@ -41,7 +46,7 @@ in `src/main.py` or `src/ui/gui.py`.
 | `<CS2>/game/csgo/console.log` | read | CS2's console mirror (requires `-condebug`); source of incoming chat. |
 | `<CS2>/game/csgo/cfg/message.cfg` | write | Holds the `say "<chunk>"` (or `say_team "<chunk>"`) command CS2 executes when the bound key is pressed. |
 | `<CS2>/game/csgo/cfg/gamestate_integration_cs2chatbot.cfg` | write | The Game State Integration config, written by the Settings "Install GSI config" button (`gsi.write_gsi_cfg`). Points CS2's GSI `uri` at `http://127.0.0.1:8765/gsi` with the app's `gsi_token`. CS2 must be restarted to pick it up. |
-| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` value is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated, and `rules`, the command-label list. Created automatically if missing or invalid JSON. |
+| `chatbot_settings.json` | read/write | Per-area settings, namespaced by area key, e.g. `{ "characterai": { "token": "<C.AI token>", "web_next_auth": "<web-next-auth cookie>" } }`. The `web_next_auth` value is the `web-next-auth` cookie from character.ai and is required for name search. The cross-cutting `app` namespace also holds `gsi_token`, a random hex token generated once (`gsi.ensure_token`) and written into the GSI cfg so CS2's POSTs can be authenticated, and `rules`, the command-label list. The `c2` namespace holds the command checkboxes (`enabled`) and the blackjack settings (`blackjack`: `join_seconds`, `turn_seconds`, `decks`). Created automatically if missing or invalid JSON. |
 | `cs2_chatbot_debug.log` | write | Verbose debug log next to the executable, recreated each run. Written **only** while `debug_log` is on; with it off the file is never created. Wiring lives in `src/logsetup.py`. |
 
 `<CS2>` is the CS2 install path discovered from the registry; the app computes

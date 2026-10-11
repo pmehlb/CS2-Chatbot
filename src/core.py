@@ -32,6 +32,13 @@ NAME_END_MARKER = '‎'
 # unthrottled read log would be most of the debug file.
 READ_LOG_SECONDS = 1.0
 
+# CS2 drops a chat line that an account sends too soon after its previous one,
+# with no error. In console.log (2026-10-10), a reply sent 0-0.1 s after the
+# account's own line never showed, and one sent 0.5 s after did. After a chat
+# line from steam_nick (you), each keypress waits until this much time passes.
+# Replies to other players go out at once.
+MIN_CHAT_GAP = 0.6
+
 
 class LogTailer:
     """Incrementally reads a growing log file, yielding only newly-appended lines.
@@ -156,7 +163,8 @@ def _channel_for(line: str):
     return None, None
 
 
-def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None):
+def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None,
+                           answer_self=False, on_shown=None):
     """Drain the tailer and return the newest answerable chat line as
     ``(message, channel, name)`` where channel is 'all' or 'team' and name is the
     clean display name of the speaker.
@@ -170,6 +178,14 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None)
     ``queues`` is the active area's ``queues_message`` (or None). A line it
     claims goes onto ``app.chat_queue`` to be answered in arrival order, and
     takes no part in the newest-wins pick.
+
+    A line from ``steam_nick`` (you) starts the chat gap. The echo of a line the
+    app sent is never answered. Anything else you type is answered only when
+    ``answer_self`` is set (the active area's ``answers_own_lines``); it is
+    never added to the roster.
+
+    ``on_shown`` is the active area's ``reply_shown`` (or None). The echo of the
+    last chunk of a reply calls it with that reply.
 
     Returns (None, None, None) if there's nothing to answer.
     """
@@ -185,12 +201,22 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None)
         if not message:
             continue
 
-        # Don't respond to our own messages -- but do use them to confirm that a
-        # reply waiting under Human Control actually reached chat.
-        if steam_nick and steam_nick in name_part:
-            logger.debug(f'Own message in {channel} chat, not answering: {message!r}')
-            note_own_chat_line(app, message)
-            continue
+        # A line from you: the next keypress keeps the chat gap after it. The
+        # echo of our own reply is never answered (it also confirms a reply
+        # waiting under Human Control). What you typed yourself is answered
+        # only by areas that opt in (the Command Bot).
+        own = bool(steam_nick) and steam_nick in name_part
+        if own:
+            app.last_chat_at = time.monotonic()
+            if take_own_echo(app, message):
+                logger.debug(f'Own reply reached {channel} chat: {message!r}')
+                reply = take_shown_reply(app, message)
+                if reply is not None and on_shown is not None:
+                    on_shown(reply, time.monotonic())
+                continue
+            if not answer_self:
+                logger.debug(f'Own message in {channel} chat, not answering: {message!r}')
+                continue
 
         # The display name follows the channel marker; cut at the U+200E that CS2
         # appends after it so the name is clean and identical alive or "[DEAD]".
@@ -199,19 +225,21 @@ def extract_latest_message(tailer: LogTailer, steam_nick: str, app, queues=None)
         if not name:
             continue
 
-        # Register newcomers (default: respond), keeping insertion order.
-        if name not in app.roster:
+        # Register newcomers (default: respond), keeping insertion order. You
+        # are not a roster entry: you cannot mute yourself.
+        if not own and name not in app.roster:
             app.roster[name] = True
             app.roster_version += 1
             logger.info(f'New player in chat: {name!r} (answering them by default)')
+        allowed = own or app.roster[name]
 
         # Only the newest message from an allowed speaker is answerable --
         # unless the area queues it (the blackjack commands).
-        if app.roster[name] and queues is not None and queues(message):
+        if allowed and queues is not None and queues(message):
             app.chat_queue.append((message, channel, name))
             logger.debug(f'[{channel}] {name}: {message!r} (queued, '
                          f'{len(app.chat_queue)} waiting)')
-        elif app.roster[name]:
+        elif allowed:
             logger.debug(f'[{channel}] {name}: {message!r}')
             latest = message
             latest_channel = channel
@@ -287,6 +315,8 @@ async def send_to_game(reply, app, channel: str = 'all') -> None:
         return
     verb = 'say_team' if channel == 'team' else 'say'
     lines = [f'{verb} "{chunk}"' for chunk in chunks]
+    # The echo of the last chunk tells the area that the reply reached chat.
+    app.shown_watch.append((chunks[-1], reply))
 
     if human_control(app):
         # One file, one exec: the human presses the bind key when they want to.
@@ -310,7 +340,8 @@ async def send_to_game(reply, app, channel: str = 'all') -> None:
     if delay_ms > 0:
         await asyncio.sleep(delay_ms / 1000)
 
-    for line in lines:
+    for chunk, line in zip(chunks, lines):
+        await _wait_for_chat_gap(app)
         if not _write_cfg(app, line):
             return
 
@@ -318,6 +349,7 @@ async def send_to_game(reply, app, channel: str = 'all') -> None:
         title = get_foreground_window_title()
         if title == 'Counter-Strike 2':
             pydirectinput.write(app.bind_key)
+            app.recent_sends.append(chunk)   # so its echo is not answered
             await asyncio.sleep(app.chat_delay)
         else:
             # The single most confusing failure: the reply is written, nothing
@@ -328,6 +360,16 @@ async def send_to_game(reply, app, channel: str = 'all') -> None:
 
     # Response output is now in message.cfg: exec light goes green.
     set_exec_state(app, True)
+
+
+async def _wait_for_chat_gap(app) -> None:
+    """Hold the next keypress until MIN_CHAT_GAP has passed since your last
+    chat line (a line from steam_nick, see app.last_chat_at)."""
+    wait = app.last_chat_at + MIN_CHAT_GAP - time.monotonic()
+    if wait > 0:
+        logger.debug(f'Holding the keypress {wait * 1000:.0f}ms: CS2 drops a chat line '
+                     'that comes too soon after the last one.')
+        await asyncio.sleep(wait)
 
 
 def write_message_cfg(reply, app, channel: str = 'all') -> bool:
@@ -351,6 +393,8 @@ def write_message_cfg(reply, app, channel: str = 'all') -> bool:
                 f'press {app.bind_key!r} in CS2 to send.')
     if human_control(app):
         app.pending_sends = list(chunks)
+    else:
+        app.recent_sends.extend(chunks)
     set_exec_state(app, True)
     return True
 
@@ -399,25 +443,54 @@ def begin_reply(app) -> None:
         clear_message_cfg(app)
 
 
-def note_own_chat_line(app, text: str) -> None:
+def note_own_chat_line(app, text: str) -> bool:
     """Tick off one pending chunk when our own message shows up in chat.
 
     Under Human Control the exec light means "ready to fire", so it stays green
     until CS2 echoes the text we wrote. Matching the text (not just the nick)
     keeps your own typing from clearing a reply that is still waiting.
+
+    Returns True if ``text`` matched a pending chunk.
     """
     pending = getattr(app, 'pending_sends', None)
     if not pending:
-        return
+        return False
     clean = (text or '').strip()
+    matched = False
     for index, chunk in enumerate(pending):
         if chunk.strip() == clean:
             del pending[index]
+            matched = True
             logger.debug(f'Reply chunk reached chat; {len(pending)} still waiting.')
             break
     if not pending:
         logger.info('The whole reply reached chat: the exec light goes back to red.')
         set_exec_state(app, False)
+    return matched
+
+
+def take_own_echo(app, text: str) -> bool:
+    """True if ``text`` is the echo of a line the app sent, not something you
+    typed. Consumes the match: a pending Human Control chunk, or a recent
+    auto-press send."""
+    if note_own_chat_line(app, text):
+        return True
+    clean = (text or '').strip()
+    for index, chunk in enumerate(app.recent_sends):
+        if chunk.strip() == clean:
+            del app.recent_sends[index]
+            return True
+    return False
+
+
+def take_shown_reply(app, text: str):
+    """The reply whose last chunk is ``text``, or None. Consumes the match."""
+    clean = (text or '').strip()
+    for index, (chunk, reply) in enumerate(app.shown_watch):
+        if chunk.strip() == clean:
+            del app.shown_watch[index]
+            return reply
+    return None
 
 
 def set_exec_state(app, ready: bool) -> None:
@@ -524,7 +597,7 @@ def _reply_waiting(app) -> bool:
 async def _answer_queue(app, area) -> bool:
     """Answer queued chat lines, oldest first, until one sends a reply.
 
-    A line that gets no reply (a !hitme out of turn) costs nothing, so the next
+    A line that gets no reply (a !hit out of turn) costs nothing, so the next
     one goes in the same tick. True if a reply went out.
     """
     while app.chat_queue:
@@ -596,7 +669,10 @@ async def handle_tick(app) -> None:
     # off. Only the area that answers may queue lines, and only while the bot is on.
     area = app.active_area if app.powered_on else None
     queues = getattr(area, 'queues_message', None)
-    message, channel, name = extract_latest_message(app.tailer, app.steam_nick, app, queues)
+    message, channel, name = extract_latest_message(
+        app.tailer, app.steam_nick, app, queues,
+        answer_self=getattr(area, 'answers_own_lines', False),
+        on_shown=getattr(area, 'reply_shown', None))
 
     # Each guard below explains itself, but only when a message was actually
     # waiting: the loop ticks ten times a second and an idle tick tells nobody
@@ -636,7 +712,7 @@ async def handle_tick(app) -> None:
 
     # Queued lines (the blackjack commands) come next, one reply per tick in
     # arrival order, then the area timers (the deal, a turn running out). The
-    # queue goes first so a !hitme typed before the turn ran out still counts.
+    # queue goes first so a !hit typed before the turn ran out still counts.
     # Like an event, either one takes this tick from the newest-wins chat line.
     if not _reply_waiting(app):
         if await _answer_queue(app, area) or await _run_timers(app, area):

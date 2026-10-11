@@ -3,19 +3,25 @@
 Commands live in a small registry (name -> Command), so the enable checkboxes
 and the !help listing both derive from one place; adding a command is one
 registry entry plus one handler method. Replies are plain text (no emoji) for
-CS2 font compatibility. Two commands hit free, keyless web APIs via httpx; the
-rest are local.
+CS2 font compatibility; the blackjack card suits are the one exception. A few
+commands hit free web APIs via httpx; the rest are local.
+
+!blackjack runs a table (areas/blackjack.py) with timers of its own: the deal
+after the join window and the stand when a turn runs out. Those lines go out
+through generate_timed(), which the chat loop polls on every tick.
 """
 import logging
 import random
+import time
 import urllib.parse
-from dataclasses import dataclass
-from typing import Awaitable, Callable, List, Optional, Union
+from dataclasses import dataclass, field
+from typing import Awaitable, Callable, Dict, List, Optional, Union
 
 import httpx
 from nicegui import ui
 
 from ui.ui_util import area_header, settings_card
+from . import blackjack
 from .base import ChatArea
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,19 @@ ALPHAVANTAGE_KEY = 'JCFJ95WG36YQ7166'
 QUOTE_URL = 'https://dummyjson.com/quotes/random'
 QUOTE_MAX_LEN = 130
 QUOTE_TRIES = 3
+
+# The blackjack settings in the C2 tab: table attribute, label, bounds, tooltip.
+BJ_SECONDS_RANGE = (5, 120)
+BJ_DECKS_RANGE = (1, 8)
+BJ_FIELDS = (
+    ('join_seconds', 'Join window (s)', BJ_SECONDS_RANGE,
+     'Time between !blackjack and the deal. Players type !join in this window.'),
+    ('turn_seconds', 'Turn timer (s)', BJ_SECONDS_RANGE,
+     'Time each player gets to !hit or !stand. When it runs out, the player stands.'),
+    ('decks', 'Decks in shoe', BJ_DECKS_RANGE,
+     'Decks shuffled together. The shoe reshuffles when less than a quarter is left. '
+     'A change takes effect at the next deal.'),
+)
 
 EIGHTBALL_ANSWERS = [
     'It is certain.', 'It is decidedly so.', 'Without a doubt.',
@@ -56,6 +75,9 @@ class Command:
     usage: str                         # shown in !help (e.g. '!8ball [question]')
     desc: str                          # checkbox sub-label
     handler: Callable[[str], Awaitable[Reply]]
+    # Follow-up commands that only work while this one is enabled (!join,
+    # !hit, !stand for !blackjack). No checkbox of their own.
+    subcommands: Dict[str, Callable[[str], Awaitable[Reply]]] = field(default_factory=dict)
 
 
 async def _http_get_text(url, headers=None) -> str:
@@ -79,10 +101,12 @@ class CommandBotArea(ChatArea):
     label = 'C2'
     icon = 'terminal'
     attribute_speaker = False  # commands match a leading '!', so never prefix the message
+    answers_own_lines = True   # you can use the commands too (e.g. sit at your own table)
 
     def __init__(self):
         self.app = None
         self.enabled = {}               # name -> bool (absent = on by default)
+        self.table = blackjack.Table()
 
         # Ordered registry; order drives both the checkbox list and !help.
         ordered = [
@@ -99,8 +123,15 @@ class CommandBotArea(ChatArea):
                     self._cmd_fortunecookie),
             Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup',
                     self._cmd_ticker),
+            Command('blackjack', '!blackjack (!join !hit !stand !double !split [#])',
+                    'blackjack vs the dealer', self._cmd_blackjack,
+                    subcommands={'join': self._cmd_join, 'hit': self._cmd_hit,
+                                 'stand': self._cmd_stand, 'double': self._cmd_double,
+                                 'split': self._cmd_split}),
         ]
         self.registry = {c.name: c for c in ordered}
+        # Sub-command name -> parent command name, for dispatch.
+        self.parents = {sub: c.name for c in ordered for sub in c.subcommands}
 
     # ------------------------------------------------------------------ contract
 
@@ -117,12 +148,42 @@ class CommandBotArea(ChatArea):
 
         name, _, arg = text[1:].partition(' ')
         name = name.lower()
-        cmd = self.registry.get(name)
-        if cmd is None or not self._is_enabled(name):
-            return None
+        if name in self.parents:
+            parent = self.parents[name]
+            if not self._is_enabled(parent):
+                return None
+            handler = self.registry[parent].subcommands[name]
+        else:
+            cmd = self.registry.get(name)
+            if cmd is None or not self._is_enabled(name):
+                return None
+            handler = cmd.handler
 
         # The reply cooldown is global and enforced by the chat loop, not here.
-        return await cmd.handler(arg.strip())
+        return await handler(arg.strip())
+
+    def queues_message(self, message: str) -> bool:
+        """Blackjack commands go in order: two !join lines in one tick both count."""
+        if not self._is_enabled('blackjack'):
+            return False
+        name = (message or '').strip()[1:].partition(' ')[0].lower()
+        return message.strip().startswith('!') and \
+            (name == 'blackjack' or self.parents.get(name) == 'blackjack')
+
+    async def generate_timed(self, app):
+        """The blackjack table's due timer line, sent to its own channel."""
+        if not self._is_enabled('blackjack'):
+            return None
+        channel = self.table.channel   # read first: finishing a round resets it
+        reply = self.table.tick(time.monotonic())
+        return (reply, channel) if reply else None
+
+    def reply_shown(self, reply, now: float) -> None:
+        """The table view in chat starts the round clock."""
+        lag = self.table.shown(reply, now)
+        if lag is not None:
+            logger.debug(f'Blackjack table view reached chat {lag:.1f}s after the table '
+                         f'built it. The {self.table.turn_seconds}s round clock starts now.')
 
     # ------------------------------------------------------------------ commands
 
@@ -250,6 +311,42 @@ class CommandBotArea(ChatArea):
         # On rate-limit AlphaVantage returns a body keyed by 'Note'/'Information'.
         return isinstance(data, dict) and ('Note' in data or 'Information' in data)
 
+    # The blackjack commands act for whoever typed them, which the chat loop
+    # records in app.last_speaker (the message text carries no name here).
+
+    def _speaker(self) -> str:
+        return getattr(self.app, 'last_speaker', '') or ''
+
+    async def _cmd_blackjack(self, arg: str) -> Reply:
+        if not self._speaker():
+            return None
+        channel = getattr(self.app, 'last_channel', 'all') or 'all'
+        return self.table.open(self._speaker(), channel, time.monotonic())
+
+    async def _cmd_join(self, arg: str) -> Reply:
+        if not self._speaker():
+            return None
+        return self.table.join(self._speaker(), time.monotonic())
+
+    def _table_move(self, move, arg: str) -> Reply:
+        # A move needs a name: the table answers "you can't do that" by name.
+        # ``arg`` is the optional hand number after a split ("!hit 2").
+        if not self._speaker():
+            return None
+        return move(self._speaker(), time.monotonic(), arg)
+
+    async def _cmd_hit(self, arg: str) -> Reply:
+        return self._table_move(self.table.hit, arg)
+
+    async def _cmd_stand(self, arg: str) -> Reply:
+        return self._table_move(self.table.stand, arg)
+
+    async def _cmd_double(self, arg: str) -> Reply:
+        return self._table_move(self.table.double, arg)
+
+    async def _cmd_split(self, arg: str) -> Reply:
+        return self._table_move(self.table.split, arg)
+
     # ------------------------------------------------------------------ helpers
 
     def _is_enabled(self, name: str) -> bool:
@@ -262,6 +359,7 @@ class CommandBotArea(ChatArea):
         saved = app.load_area_settings(self.key)
         enabled = saved.get('enabled')
         self.enabled = dict(enabled) if isinstance(enabled, dict) else {}
+        self._load_blackjack(saved.get('blackjack'))
 
         area_header('Command Bot',
                     'Responds to `!`-prefixed chat commands. Toggle which '
@@ -284,6 +382,17 @@ class CommandBotArea(ChatArea):
                 ui.tooltip('Write the help message to message.cfg now, to advertise the '
                            'commands and kick things off. Bot does not need to be on.')
 
+        with settings_card('Blackjack'):
+            # Three equal columns: the two timers and the shoe size.
+            with ui.row().classes('w-full no-wrap gap-3'):
+                for attr, label, (low, high), tip in BJ_FIELDS:
+                    box = ui.number(label, value=getattr(self.table, attr), min=low, max=high,
+                                    step=1, format='%.0f',
+                                    on_change=lambda e, a=attr: self._set_blackjack(a, e.value)) \
+                        .classes('flex-1')
+                    with box:
+                        ui.tooltip(tip)
+
     def _send_help(self) -> None:
         """Write the help message out now (a manual kickoff, independent of the
         power toggle and cooldown). All say lines are written to message.cfg at
@@ -304,3 +413,28 @@ class CommandBotArea(ChatArea):
     def _set_enabled(self, name: str, value) -> None:
         self.enabled[name] = bool(value)
         self._save()
+
+    def _load_blackjack(self, saved) -> None:
+        if isinstance(saved, dict):
+            for attr, _label, bounds, _tip in BJ_FIELDS:
+                if attr in saved:
+                    self._apply_blackjack(attr, saved[attr], bounds)
+
+    def _apply_blackjack(self, attr: str, value, bounds) -> bool:
+        """Clamp and set one table setting. False if the value is not a number."""
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return False
+        low, high = bounds
+        setattr(self.table, attr, max(low, min(high, number)))
+        return True
+
+    def _set_blackjack(self, attr: str, value) -> None:
+        # An emptied number box sends None: keep the old value until a number lands.
+        bounds = next(f[2] for f in BJ_FIELDS if f[0] == attr)
+        if not self._apply_blackjack(attr, value, bounds):
+            return
+        data = self.app.load_area_settings(self.key)
+        data['blackjack'] = {f[0]: getattr(self.table, f[0]) for f in BJ_FIELDS}
+        self.app.save_area_settings(self.key, data)

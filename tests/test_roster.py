@@ -26,6 +26,8 @@ class FakeApp:
     def __init__(self, roster=None):
         self.roster = roster or {}
         self.roster_version = 0
+        self.recent_sends = []
+        self.shown_watch = []
 
 
 M = core.ALL_CHAT_MARKER

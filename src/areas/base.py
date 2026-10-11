@@ -39,6 +39,11 @@ class ChatArea:
     consumes_events = False   # True for areas that react to GSI game events
                               # (ChatArea.generate_event); the chat loop only
                               # pops events for areas that opt in.
+    answers_own_lines = False # True to answer what you type yourself (lines
+                              # from steam_nick, never the echo of our own
+                              # reply). The Command Bot opts in, so you can play
+                              # at your own blackjack table. AI areas stay off:
+                              # they would talk to you from your own account.
 
     def build_tab(self, app) -> None:
         """Render this area's settings/UI. Called inside its ui.tab_panel."""
@@ -91,3 +96,11 @@ class ChatArea:
         turn running out. Default: areas have no timers.
         """
         return None
+
+    def reply_shown(self, reply, now: float) -> None:
+        """``reply`` reached chat: the echo of its last line came back.
+
+        ``reply`` is what went to send_to_game, and ``now`` is a
+        ``time.monotonic()`` value. The blackjack table starts its round clock
+        here. Default: nothing.
+        """

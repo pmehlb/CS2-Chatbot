@@ -112,6 +112,18 @@ class AppState:
     auto_press: bool = True             # press the bind key ourselves vs. let the user press it
     steam_nick: str = ''
     last_reply_at: float = 0.0          # time.monotonic() of the last sent reply (runtime only)
+    # time.monotonic() of your last chat line, a line from steam_nick (runtime
+    # only). CS2 drops a line from the account that follows it too closely, so
+    # the next keypress waits (core.MIN_CHAT_GAP).
+    last_chat_at: float = 0.0
+    # The chat text of the lines the app sent with auto-press (runtime only).
+    # A line from steam_nick that matches one is the echo of our own reply, so
+    # it is not answered as something you typed.
+    recent_sends: deque = field(default_factory=lambda: deque(maxlen=16))
+    # (last chunk, reply) for the replies that send_to_game wrote (runtime
+    # only). The echo of that chunk tells the area its reply reached chat
+    # (ChatArea.reply_shown).
+    shown_watch: deque = field(default_factory=lambda: deque(maxlen=8))
 
     # Who said the message currently being answered (runtime only). The chat loop
     # sets it before calling generate(), for areas that gate on identity. The

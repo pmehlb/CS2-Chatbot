@@ -31,6 +31,9 @@ class FakeApp:
         self.can_exec = False
         self.exec_state_cb = None
         self.pending_sends = []
+        self.last_chat_at = 0.0
+        self.recent_sends = []
+        self.shown_watch = []
         self.steam_nick = 'MyNick'
         self.roster = {}
         self.roster_version = 0

@@ -70,7 +70,7 @@ also opt in to reacting to your own live game events.
 | 🤖 **ChatGPT** | Replies via OpenAI. Pick a model and give the bot a persona. Shows a live log of what was said and what it replied.                                                                       | OpenAI API key |
 | ✨ **Claude** | Replies via Anthropic's Claude. Pick a model and reasoning effort and give it a persona. Shows a live log of what was said and what it replied.                                           | Anthropic API key |
 | 🔥 **Tilt Bot** | Reacts to *your* live game events (multi-kills, MVPs, round wins, clutches, match point) with taunts, and can clap back at chat. Uses editable built-in lines **or** borrows an AI brain. | No (needs [GSI](#tilt-bot-and-live-game-events-gsi)) |
-| ⌨️ **C2** (Command Bot) | Answers `!`-prefixed commands in chat: `!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, and `!ticker`. Toggle which are enabled.  | No |
+| ⌨️ **C2** (Command Bot) | Answers `!`-prefixed commands in chat: `!help`, `!ping`, `!slots`, `!8ball`, `!roll`, `!flip`, `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, `!ticker`, and `!blackjack`. Toggle which are enabled.  | No |
 | 💬 **Mimic** | Repeats the last message back with `RaNdOmLy ApPlIeD` capitalization.                                                                                                                     | No |
 | 🔁 **Reverser** | Reverses the last message, optionally find/replacing words first.                                                                                                                         | No |
 | ⚙️ **Settings** | Configure timing/cooldown, known-player attribution, API tokens, theme and accent colour, the toggle hotkey, GSI setup, and the debug log.                                              | No |
@@ -104,7 +104,12 @@ More on each group:
 
 
 - **Utility bots (C2, Mimic, Reverser).** No account needed. The Command Bot
-  (C2) answers `!`-commands, and you flip each one on or off. Mimic repeats the
+  (C2) answers `!`-commands, and you flip each one on or off. `!blackjack` opens
+  a table against the dealer: players `!join`, then play rounds with `!hit`,
+  `!stand`, `!double`, and `!split` (no limit on splits). Everyone moves at the
+  same time, and the bot shows the table once all moves are in, or when the
+  turn timer runs out. The timer starts when the table shows in chat. The tab sets the join window, the turn timer, and the shoe size
+  (6 decks by default). Mimic repeats the
   last message with random capitalization; Reverser reverses it, with optional
   find-and-replace first. Both are handy for testing the read → reply pipeline
   before you point an AI at it.

@@ -7,6 +7,7 @@ import asyncio
 import os
 import random
 import sys
+import time
 
 # Make the application package layout (src/) importable when run from anywhere.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -20,6 +21,10 @@ class FakeApp:
 
     def __init__(self):
         self._store = {}
+        self.last_speaker = ''
+        self.last_channel = 'all'
+        self.recent_sends = []
+        self.shown_watch = []
 
     def load_area_settings(self, key):
         value = self._store.get(key, {})
@@ -407,6 +412,95 @@ def test_help_includes_new_commands_when_enabled():
     assert '!quote' in out[1]
     assert '!fortunecookie' in out[1]
     assert '!ticker' in out[1]
+
+
+# ---------------------------------------------------------------------- blackjack
+
+def say(area, name, text, channel='all'):
+    """Send ``text`` to the area as ``name``, the way the chat loop does."""
+    area.app.last_speaker = name
+    area.app.last_channel = channel
+    return run(area.generate(text, area.app))
+
+
+def test_blackjack_opens_table_for_the_speaker():
+    area = make_area()
+    out = say(area, 'Pat', '!blackjack', channel='team')
+    assert out.startswith('Blackjack table open.')
+    assert [s.name for s in area.table.seats] == ['Pat']
+    assert area.table.channel == 'team'
+
+
+def test_join_seats_the_speaker():
+    area = make_area()
+    say(area, 'Pat', '!blackjack')
+    assert say(area, 'Bob', '!join').startswith('Bob joined (2 seated)')
+
+
+def test_blackjack_subcommands_follow_the_blackjack_checkbox():
+    area = make_area()
+    area.enabled = {'blackjack': False}
+    assert say(area, 'Pat', '!blackjack') is None
+    assert say(area, 'Pat', '!join') is None
+    assert say(area, 'Pat', '!hit') is None
+    assert run(area.generate_timed(area.app)) is None
+
+
+def test_subcommands_have_no_checkbox_or_help_entry():
+    area = make_area()
+    assert set(area.registry) >= {'blackjack'}
+    assert not {'join', 'hit', 'stand', 'double', 'split'} & set(area.registry)
+    assert '!blackjack (!join !hit !stand !double !split [#])' in area._help_lines()[1]
+
+
+def test_generate_timed_deals_into_the_table_channel():
+    area = make_area()
+    say(area, 'Pat', '!blackjack', channel='team')
+    assert run(area.generate_timed(area.app)) is None     # join window still open
+    # Stack the shoe: a random deal can be a natural or a dealer blackjack,
+    # which ends the round before the first prompt.
+    area.table.shoe.cards += list(reversed(['10♠', '7♣', '4♥', '9♦']))
+    area.table.deadline = time.monotonic() - 1            # window just closed
+    reply, channel = run(area.generate_timed(area.app))
+    assert channel == 'team'
+    assert reply == ['[dealer] (7) 7♣ --.', '[Pat] >>(14) 10♠ 4♥. !hit/!stand/!double']
+
+
+def test_hit_and_stand_act_for_the_speaker():
+    area = make_area()
+    say(area, 'Pat', '!blackjack')
+    area.table.shoe.cards += list(reversed(['10♠', '7♣', '4♥', 'K♦']))
+    area.table.deadline = time.monotonic() - 1
+    run(area.generate_timed(area.app))
+    assert say(area, 'Bob', '!stand') == "Bob: You can't do that, dummy."
+    assert say(area, 'Pat', '!stand') == ['[dealer] (17) 7♣ K♦.', '[Pat] (LOSE, 14) 10♠ 4♥.']
+
+
+def test_a_move_passes_the_hand_number():
+    area = make_area()
+    say(area, 'Pat', '!blackjack')
+    area.table.shoe.cards += list(reversed(['8♠', '7♣', '8♥', '10♦', '3♦', '10♣']))
+    area.table.deadline = time.monotonic() - 1
+    run(area.generate_timed(area.app))
+    say(area, 'Pat', '!split')
+    assert say(area, 'Pat', '!hit 2') is None
+    assert area.table.moves == {(0, 1): 'hit'}
+
+
+def test_blackjack_settings_load_clamped():
+    area = make_area()
+    area._load_blackjack({'turn_seconds': 2, 'join_seconds': 30, 'decks': 99})
+    assert area.table.turn_seconds == commands.BJ_SECONDS_RANGE[0]
+    assert area.table.join_seconds == 30
+    assert area.table.decks == commands.BJ_DECKS_RANGE[1]
+
+
+def test_blackjack_setting_change_is_saved():
+    area = make_area()
+    area._set_blackjack('turn_seconds', 20)
+    area._set_blackjack('decks', None)      # emptied box: ignored
+    saved = area.app.load_area_settings(area.key)['blackjack']
+    assert saved == {'join_seconds': 15, 'turn_seconds': 20, 'decks': 6}
 
 
 if __name__ == '__main__':

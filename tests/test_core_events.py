@@ -47,6 +47,9 @@ class FakeApp:
         self.cooldown_enabled = False
         self.cooldown_ms = 0
         self.last_reply_at = 0.0
+        self.last_chat_at = 0.0
+        self.recent_sends = []
+        self.shown_watch = []
         self.auto_press = True   # the app fires the reply itself (not Human Control)
         self.can_exec = False
         self.exec_state_cb = None

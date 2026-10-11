@@ -72,8 +72,13 @@ Each tick:
 
 2. **Filter.** The line splits on the first `': '` into sender and message. The
    name is cut at the `U+200E` mark CS2 appends after it, giving one stable entry
-   per player whether they're alive or `[DEAD]`. Messages from your own Steam
-   nick (read once at startup) are skipped so the bot never answers itself. Every
+   per player whether they're alive or `[DEAD]`. A line from your own Steam
+   nick is either the echo of a reply the app sent, or something you typed. The
+   app never answers an echo, so the bot never answers itself. What you typed
+   goes only to tabs that opt in (`answers_own_lines`). The Command Bot opts
+   in, so you can use the commands and sit at your own blackjack table. The AI
+   tabs ignore you. After any line from you, the next keypress waits 0.6 s
+   (`MIN_CHAT_GAP`), because CS2 drops a line that follows too closely. Every
    other speaker is added to the session roster (Settings > Known Players),
    defaulting to respond; toggle someone off and their messages are ignored. The
    roster is in-memory only and resets each launch.
@@ -162,7 +167,9 @@ What replies depends on which tab is open:
 - **Tilt Bot** reacts to live game events and optionally claps back at chat,
   using either its editable canned line pools or a borrowed AI brain.
 - **Command Bot (C2)** answers `!`-prefixed commands (`!help`, `!8ball`,
-  `!ticker`, and so on) and stays silent on anything else.
+  `!ticker`, and so on) and stays silent on anything else. `!blackjack` runs a
+  table with its own timers (the deal, a round running out). The loop sends those
+  lines through `generate_timed`, with no chat line to trigger them.
 - **Mimic** randomizes each letter's case; **String Reverser** reverses the text,
   censoring configured words first.
 
