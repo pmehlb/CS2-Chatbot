@@ -110,7 +110,11 @@ runtime flags (`powered_on`, `auto_press`), the cached `steam_nick`, the list of
 
 It also holds the in-memory `roster` (exact display name -> whether to respond,
 populated as people talk) and its `roster_version` counter; the roster is
-session-only and never persisted. The global toggle hotkey is `toggle_key` (the
+session-only and never persisted. `last_speaker` is the name behind the message
+being answered, set by the chat loop before `generate()` for areas that gate on
+identity; it
+is runtime only, and separate from the optional `[Name] said: ` prefix, which
+command areas opt out of. The global toggle hotkey is `toggle_key` (the
 chosen key, persisted; empty = unset) and `toggle_requested` (a flag the hotkey
 callback sets and the GUI timer clears).
 
@@ -153,7 +157,7 @@ cooldown, auto-press, speaker attribution, toggle key, command `rules`,
 | `note_own_chat_line(app, text)` | Removes one matching chunk from `app.pending_sends` when our own chat line comes back through the log, and turns the light red once the list empties. Matching the text, not only the nick, keeps your own typing from clearing a waiting reply. |
 | `set_exec_state(app, ready)` | Flips `app.can_exec` and notifies the GUI only when the state changes (green once a reply is written, red while processing). Under Human Control green also means "not sent yet". |
 | `cooldown_active(app, now)` | Returns `True` when the global reply cooldown is enabled and `cooldown_ms` hasn't elapsed since `app.last_reply_at`. One cooldown applies across every area; set in Settings > Logic. |
-| `handle_tick(app)` | One timer tick: always drains the tailer (keeping the offset current), then, if the bot is on, the active area is ready, and the global cooldown isn't active, handles output. If the active area `consumes_events`, it first pops the newest pending GSI event (dropping stale ones, via `_next_event`) and reacts via `_react_to_event`/`generate_event`, which takes priority over chat; otherwise it optionally tags the message with the speaker (`attribute_message`) and asks `active_area.generate(...)` for a chat reply. Both paths then run the reply through `rules.apply_rules(reply, app.rules)` before sending via `send_to_game` and recording `last_reply_at` — so a reply silenced by a command label costs no keystrokes and starts no cooldown. |
+| `handle_tick(app)` | One timer tick: always drains the tailer (keeping the offset current), then, if the bot is on, the active area is ready, and the global cooldown isn't active, handles output. If the active area `consumes_events`, it first pops the newest pending GSI event (dropping stale ones, via `_next_event`) and reacts via `_react_to_event`/`generate_event`, which takes priority over chat; otherwise it records the speaker in `app.last_speaker`, optionally tags the message with them (`attribute_message`), and asks `active_area.generate(...)` for a chat reply. Both paths then run the reply through `rules.apply_rules(reply, app.rules)` before sending via `send_to_game` and recording `last_reply_at` — so a reply silenced by a command label costs no keystrokes and starts no cooldown. |
 
 ## `rules.py`: command labels
 
@@ -226,6 +230,7 @@ imports the areas) and creating a cycle.
 | Symbol | Purpose |
 |--------|---------|
 | `notify_and_log(...)` | Shows a NiceGUI notification and mirrors it to the log. |
+| `copy_to_clipboard(text, what)` | Copies text from the webview via JS (NiceGUI 1.4 has no clipboard helper), falling back to a hidden textarea outside a secure context, then notifies. Used by the Settings prompt snippet / log path. |
 | `area_header(title, description)` | Renders an area tab's heading (title, optional muted description, divider) so every tab opens with identical typography and rhythm. |
 | `settings_card(title)` | Context manager for a titled card with consistent elevation, padding, and inner spacing, used across Settings and the area tabs. |
 | `ToggleButton` | The power button: flips an on/off state, recolors itself, and delegates the allow/deny decision to an `on_toggle` callback. |

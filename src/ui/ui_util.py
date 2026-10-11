@@ -10,6 +10,7 @@ controls in a row, gap-3 between stacked controls in a card -- instead of
 ad-hoc margins or <br> spacers, so similar things line up the same way
 everywhere.
 """
+import json
 import logging
 from contextlib import contextmanager
 
@@ -41,6 +42,31 @@ def notify_and_log(message, type='info', level='info', **kwargs):
         ui.notify(message, type=type, **kwargs)  # type: ignore
     else:
         ui.notify(message, type='info', **kwargs)
+
+
+def copy_to_clipboard(text: str, what: str = 'Text') -> None:
+    """Copy ``text`` to the clipboard from the webview, and say so.
+
+    NiceGUI 1.4 has no clipboard helper, so this goes through JS.
+    navigator.clipboard needs a secure context -- localhost qualifies, but the
+    hidden-textarea fallback covers the case where it doesn't.
+    """
+    ui.run_javascript(f'''
+        const text = {json.dumps(text)};
+        if (navigator.clipboard && window.isSecureContext) {{
+            navigator.clipboard.writeText(text);
+        }} else {{
+            const el = document.createElement('textarea');
+            el.value = text;
+            el.style.position = 'fixed';
+            el.style.opacity = '0';
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+        }}
+    ''')
+    notify_and_log(f'{what} copied.', type='positive')
 
 
 def area_header(title: str, description: str = '') -> None:

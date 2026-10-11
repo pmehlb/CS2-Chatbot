@@ -5,7 +5,6 @@ It implements the same ChatArea contract as the chat behaviors and gets its
 tab the same way (registered in areas/__init__.py), but sets ``answerable =
 False`` so selecting its tab idles the bot instead of routing chat to it.
 """
-import json
 import os
 import time
 
@@ -14,7 +13,7 @@ from nicegui import ui
 import logsetup
 import rules
 from system import gsi
-from ui.ui_util import notify_and_log, settings_card
+from ui.ui_util import copy_to_clipboard, notify_and_log, settings_card
 from .base import ChatArea
 
 
@@ -301,28 +300,8 @@ class SettingsArea(ChatArea):
 
     @staticmethod
     def _copy(text: str, what: str = 'Prompt snippet') -> None:
-        """Copy ``text`` to the clipboard from the webview.
-
-        NiceGUI 1.4 has no clipboard helper, so this goes through JS.
-        navigator.clipboard needs a secure context -- localhost qualifies, but
-        the hidden-textarea fallback covers the case where it doesn't.
-        """
-        ui.run_javascript(f'''
-            const text = {json.dumps(text)};
-            if (navigator.clipboard && window.isSecureContext) {{
-                navigator.clipboard.writeText(text);
-            }} else {{
-                const el = document.createElement('textarea');
-                el.value = text;
-                el.style.position = 'fixed';
-                el.style.opacity = '0';
-                document.body.appendChild(el);
-                el.select();
-                document.execCommand('copy');
-                document.body.removeChild(el);
-            }}
-        ''')
-        notify_and_log(f'{what} copied.', type='positive')
+        """Copy ``text`` to the clipboard (shared helper; see ui/ui_util.py)."""
+        copy_to_clipboard(text, what)
 
     def _gsi_section(self, app):
         """Full-width Game State Integration setup card.

@@ -515,6 +515,11 @@ async def handle_tick(app) -> None:
     if message is None:
         return
 
+    # Who is talking, for areas that gate on identity. Set before generate() and
+    # separate from the optional speaker prefix below, which command areas
+    # opt out of.
+    app.last_speaker = name or ''
+
     # Optionally tag the message with who said it, so AI chatbots can track the
     # speaker. Areas that parse/transform the raw text opt out (see helper).
     message = attribute_message(message, name, app, area)

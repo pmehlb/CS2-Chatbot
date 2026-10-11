@@ -113,6 +113,12 @@ class AppState:
     steam_nick: str = ''
     last_reply_at: float = 0.0          # time.monotonic() of the last sent reply (runtime only)
 
+    # Who said the message currently being answered (runtime only). The chat loop
+    # sets it before calling generate(), for areas that gate on identity. The
+    # speaker prefix (attribute_message) can't serve that: it is optional, and
+    # command areas opt out of it.
+    last_speaker: str = ''
+
     # Global hotkey that toggles the bot on/off. The chosen key is persisted
     # (empty = unset, no default). ``toggle_requested`` is set by the hotkey
     # callback on the keyboard library's thread and polled/cleared by a GUI
