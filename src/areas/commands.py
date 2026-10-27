@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = 5  # seconds for network commands
 
+# A command reply longer than REPLY_MAX_LEN characters (tag included) runs the
+# command again, up to REPLY_TRIES runs in all. The shortest reply goes out.
+# A Command with reroll=False and the sub-commands always run once.
+REPLY_MAX_LEN = 160
+REPLY_TRIES = 3
+
 # !dadjoke source. icanhazdadjoke asks API users to send a descriptive User-Agent.
 DADJOKE_URL = 'https://icanhazdadjoke.com/'
 DADJOKE_UA = 'CS2-Chatbot (https://github.com/pmehlb/CS2-Chatbot)'
@@ -35,11 +41,8 @@ DADJOKE_UA = 'CS2-Chatbot (https://github.com/pmehlb/CS2-Chatbot)'
 # !fact source.
 FACT_URL = 'https://uselessfacts.jsph.pl/api/v2/facts/random?language=en'
 
-# !quote source. dummyjson has no length filter, so a long quote is re-rolled
-# a few times before the bot settles for it.
+# !quote source. dummyjson has no length filter (see REPLY_MAX_LEN).
 QUOTE_URL = 'https://dummyjson.com/quotes/random'
-QUOTE_MAX_LEN = 130
-QUOTE_TRIES = 3
 
 # !fortunecookie source.
 FORTUNE_URL = 'https://api.adviceslip.com/advice'
@@ -99,6 +102,8 @@ class Command:
     desc: str                          # checkbox sub-label
     category: str                      # its !help line (HELP_CATEGORIES); '' = not listed
     handler: Callable[[str], Awaitable[Reply]]
+    # False: run once, even for a long reply (side effects, a rate-limited API).
+    reroll: bool = True
     # Follow-up commands that only work while this one is enabled (!join,
     # !hit, !stand for !blackjack). No checkbox of their own.
     subcommands: Dict[str, Callable[[str], Awaitable[Reply]]] = field(default_factory=dict)
@@ -108,6 +113,14 @@ def tagged(tag: str, text: str) -> str:
     """One command reply: '[TAG] text'. Each handler gives its tag as the
     default of its ``tag`` parameter, so a tag changes in one place."""
     return f'[{tag}] {text}'
+
+
+def _reply_len(reply: Reply) -> int:
+    """The length of the longest chat line in a reply (0 for no reply)."""
+    if not reply:
+        return 0
+    lines = [reply] if isinstance(reply, str) else reply
+    return max(len(line) for line in lines)
 
 
 def _ticker_url(**params) -> str:
@@ -158,10 +171,10 @@ class CommandBotArea(ChatArea):
             Command('fortunecookie', '!fortunecookie', 'fortune cookie advice', 'Random',
                     self._cmd_fortunecookie),
             Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup', 'Tools',
-                    self._cmd_ticker),
+                    self._cmd_ticker, reroll=False),
             # The table itself tells players about !join and the moves.
             Command('blackjack', '!blackjack', 'blackjack vs the dealer', 'Games',
-                    self._cmd_blackjack,
+                    self._cmd_blackjack, reroll=False,
                     subcommands={'join': self._cmd_join, 'hit': self._cmd_hit,
                                  'stand': self._cmd_stand, 'double': self._cmd_double,
                                  'split': self._cmd_split}),
@@ -189,15 +202,22 @@ class CommandBotArea(ChatArea):
             parent = self.parents[name]
             if not self._is_enabled(parent):
                 return None
-            handler = self.registry[parent].subcommands[name]
+            handler, tries = self.registry[parent].subcommands[name], 1
         else:
             cmd = self.registry.get(name)
             if cmd is None or not self._is_enabled(name):
                 return None
-            handler = cmd.handler
+            handler, tries = cmd.handler, (REPLY_TRIES if cmd.reroll else 1)
 
         # The reply cooldown is global and enforced by the chat loop, not here.
-        return await handler(arg.strip())
+        shortest = None
+        for _ in range(tries):
+            reply = await handler(arg.strip())
+            if shortest is None or _reply_len(reply) < _reply_len(shortest):
+                shortest = reply
+            if _reply_len(reply) <= REPLY_MAX_LEN:
+                break
+        return shortest
 
     def queues_message(self, message: str) -> bool:
         """Blackjack commands go in order, so every !join and every move in one tick counts."""
@@ -289,11 +309,8 @@ class CommandBotArea(ChatArea):
 
     async def _cmd_quote(self, arg: str, tag: str = 'QUOTE') -> Reply:
         try:
-            for _ in range(QUOTE_TRIES):
-                data = await _http_get_json(QUOTE_URL)
-                text = (data.get('quote') or '').strip()
-                if len(text) <= QUOTE_MAX_LEN:
-                    break
+            data = await _http_get_json(QUOTE_URL)
+            text = (data.get('quote') or '').strip()
             author = (data.get('author') or '').strip()
             return tagged(tag, f'{text} - {author}' if author else text)
         except Exception as e:

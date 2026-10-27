@@ -261,7 +261,7 @@ def test_quote_success():
 
 def test_quote_rerolls_a_long_quote():
     area = make_area()
-    replies = iter([{'quote': 'x' * (commands.QUOTE_MAX_LEN + 1)}, {'quote': 'Be kind.'}])
+    replies = iter([{'quote': 'x' * commands.REPLY_MAX_LEN}, {'quote': 'Be kind.'}])
 
     async def fake_json(url, headers=None):
         return next(replies)
@@ -448,6 +448,57 @@ def test_help_includes_new_commands_when_enabled():
     assert '!quote' in text
     assert '!fortunecookie' in text
     assert '!ticker' in text
+
+
+# ---------------------------------------------------------------------- reply length
+
+LONG = 'x' * (commands.REPLY_MAX_LEN + 1)
+
+
+def fake_handler(replies):
+    """A handler that gives ``replies`` in turn, and the list of its calls."""
+    calls = []
+
+    async def handler(arg):
+        calls.append(arg)
+        return replies[len(calls) - 1]
+    return handler, calls
+
+
+def test_long_reply_reruns_the_command_until_it_fits():
+    area = make_area()
+    area.registry['fact'].handler, calls = fake_handler([LONG, 'short', LONG])
+    assert run(area.generate('!fact', area.app)) == 'short'
+    assert len(calls) == 2
+
+
+def test_every_try_too_long_sends_the_shortest():
+    area = make_area()
+    replies = [LONG + 'x' * i for i in range(commands.REPLY_TRIES)]
+    area.registry['fact'].handler, calls = fake_handler(replies)
+    assert run(area.generate('!fact', area.app)) == LONG
+    assert len(calls) == commands.REPLY_TRIES
+
+
+def test_a_list_reply_is_measured_by_its_longest_line():
+    area = make_area()
+    area.registry['fact'].handler, calls = fake_handler([['ok', LONG], ['ok', 'ok']])
+    assert run(area.generate('!fact', area.app)) == ['ok', 'ok']
+
+
+def test_a_command_with_reroll_off_runs_once():
+    area = make_area()
+    for name in ('blackjack', 'ticker'):
+        area.registry[name].handler, calls = fake_handler([LONG])
+        assert run(area.generate(f'!{name}', area.app)) == LONG
+        assert len(calls) == 1
+
+
+def test_a_subcommand_runs_once():
+    area = make_area()
+    area.registry['blackjack'].subcommands['hit'], calls = fake_handler([LONG])
+    assert run(area.generate('!hit', area.app)) == LONG
+    assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------- blackjack
