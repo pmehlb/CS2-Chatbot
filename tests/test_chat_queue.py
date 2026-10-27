@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import core
+from areas import blackjack
 from areas.commands import CommandBotArea
 
 
@@ -121,7 +122,7 @@ def test_out_of_turn_command_is_refused_then_the_queue_moves_on(app):
     deal(app, '10♠', '7♣', '4♥', 'K♦')
     tick(app, ('Bob', '!hit'), ('Pat', '!stand'))
     tick(app)
-    assert app.sent[0] == "Bob: You can't do that, dummy."
+    assert app.sent[0] == 'Bob: ' + blackjack.REFUSED_MARK
     assert app.sent[1] == ['[dealer] (17) 7♣ K♦.', '[Pat] (LOSE, 14) 10♠ 4♥.']
 
 

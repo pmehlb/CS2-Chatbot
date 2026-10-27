@@ -13,6 +13,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import areas.commands as commands
+from areas import blackjack
 from areas.commands import CommandBotArea
 
 
@@ -78,7 +79,7 @@ def test_command_is_case_insensitive():
 def test_flip_seeded():
     area = make_area()
     random.seed(1)
-    assert run(area.generate('!flip', area.app)) in ('[FLIP] Heads', '[FLIP] Tails')
+    assert run(area.generate('!flip', area.app)) in ['[FLIP] ' + side for side in commands.FLIP_SIDES]
 
 
 def test_roll_default_and_arg():
@@ -108,7 +109,7 @@ def test_slots_jackpot_format():
         out = run(area.generate('!slots', area.app))
     finally:
         commands.random.choice = original
-    assert out == '[SLOTS] seven | seven | seven - JACKPOT!'
+    assert out == f'[SLOTS] seven | seven | seven {commands.SLOTS_JACKPOT}'
 
 
 def test_8ball_prefix_and_known_answer():
@@ -197,7 +198,7 @@ def test_dadjoke_failure_returns_error():
         out = run(area.generate('!dadjoke', area.app))
     finally:
         commands._http_get_text = original
-    assert out == "[DADJOKE] couldn't fetch a joke right now"
+    assert out == f"[DADJOKE] {commands.FAIL_MARK} couldn't fetch a joke right now"
 
 
 def test_fact_success():
@@ -227,7 +228,7 @@ def test_fact_failure_returns_error():
         out = run(area.generate('!fact', area.app))
     finally:
         commands._http_get_json = original
-    assert out == "[FACT] couldn't fetch a fact right now"
+    assert out == f"[FACT] {commands.FAIL_MARK} couldn't fetch a fact right now"
 
 
 def test_quote_success():
@@ -277,7 +278,7 @@ def test_quote_failure_returns_error():
         out = run(area.generate('!quote', area.app))
     finally:
         commands._http_get_json = original
-    assert out == "[QUOTE] couldn't fetch a quote right now"
+    assert out == f"[QUOTE] {commands.FAIL_MARK} couldn't fetch a quote right now"
 
 
 def test_fortunecookie_success():
@@ -292,7 +293,7 @@ def test_fortunecookie_success():
         out = run(area.generate('!fortunecookie', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[FORTUNE] Always be yourself.'
+    assert out == f'[FORTUNE] {commands.FORTUNE_MARK} Always be yourself.'
 
 
 def test_fortunecookie_failure_returns_error():
@@ -307,7 +308,7 @@ def test_fortunecookie_failure_returns_error():
         out = run(area.generate('!fortunecookie', area.app))
     finally:
         commands._http_get_json = original
-    assert out == "[FORTUNE] couldn't fetch advice right now"
+    assert out == f"[FORTUNE] {commands.FAIL_MARK} couldn't fetch advice right now"
 
 
 def test_ticker_stock_success():
@@ -326,9 +327,24 @@ def test_ticker_stock_success():
         out = run(area.generate('!ticker AAPL', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[TICKER] AAPL $195.12 (+1.2300%)'
+    assert out == f'[TICKER] AAPL $195.12 ({commands.TICKER_UP}1.2300%)'
     assert urls == [f'{commands.TICKER_URL}?function=GLOBAL_QUOTE&symbol=AAPL'
                     f'&apikey={commands.ALPHAVANTAGE_KEY}']
+
+
+def test_ticker_stock_down():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'Global Quote': {'05. price': '88.5000', '10. change percent': '-0.4500%'}}
+
+    original = commands._http_get_json
+    commands._http_get_json = fake_json
+    try:
+        out = run(area.generate('!ticker XYZ', area.app))
+    finally:
+        commands._http_get_json = original
+    assert out == f'[TICKER] XYZ $88.50 ({commands.TICKER_DOWN}0.4500%)'
 
 
 def test_ticker_currency_success():
@@ -369,7 +385,7 @@ def test_ticker_invalid_symbol_returns_no_data():
         out = run(area.generate('!ticker ZZZZ', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[TICKER] no data for ZZZZ'
+    assert out == f'[TICKER] {commands.FAIL_MARK} no data for ZZZZ'
 
 
 def test_ticker_rate_limit_note():
@@ -384,7 +400,7 @@ def test_ticker_rate_limit_note():
         out = run(area.generate('!ticker AAPL', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[TICKER] rate limit reached, try later'
+    assert out == f'[TICKER] {commands.WAIT_MARK} rate limit reached, try later'
 
 
 def test_ticker_rate_limit_information():
@@ -399,7 +415,7 @@ def test_ticker_rate_limit_information():
         out = run(area.generate('!ticker USD JPY', area.app))
     finally:
         commands._http_get_json = original
-    assert out == '[TICKER] rate limit reached, try later'
+    assert out == f'[TICKER] {commands.WAIT_MARK} rate limit reached, try later'
 
 
 def test_ticker_failure_returns_error():
@@ -414,7 +430,7 @@ def test_ticker_failure_returns_error():
         out = run(area.generate('!ticker AAPL', area.app))
     finally:
         commands._http_get_json = original
-    assert out == "[TICKER] couldn't fetch ticker data right now"
+    assert out == f"[TICKER] {commands.FAIL_MARK} couldn't fetch ticker data right now"
 
 
 def test_help_includes_new_commands_when_enabled():
@@ -483,7 +499,7 @@ def test_hit_and_stand_act_for_the_speaker():
     area.table.shoe.cards += list(reversed(['10♠', '7♣', '4♥', 'K♦']))
     area.table.deadline = time.monotonic() - 1
     run(area.generate_timed(area.app))
-    assert say(area, 'Bob', '!stand') == "Bob: You can't do that, dummy."
+    assert say(area, 'Bob', '!stand') == 'Bob: ' + blackjack.REFUSED_MARK
     assert say(area, 'Pat', '!stand') == ['[dealer] (17) 7♣ K♦.', '[Pat] (LOSE, 14) 10♠ 4♥.']
 
 

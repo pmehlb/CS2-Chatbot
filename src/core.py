@@ -39,6 +39,15 @@ READ_LOG_SECONDS = 1.0
 # Replies to other players go out at once.
 MIN_CHAT_GAP = 0.6
 
+# Symbols that show in CS2 chat, tested in game (2026-10-26). A reference for
+# reply text only: nothing reads this list yet. The ones with \ufe0e carry the
+# text-style selector, as they were tested.
+CHAT_SYMBOLS = tuple(
+    'Ⓐ Ⓑ Ⓒ Ⓓ Ⓔ Ⓕ Ⓖ Ⓗ Ⓘ Ⓙ Ⓚ Ⓛ Ⓜ Ⓝ Ⓞ Ⓟ Ⓠ Ⓡ Ⓢ Ⓣ Ⓤ Ⓥ Ⓦ Ⓧ Ⓨ Ⓩ '
+    '➀ ➁ ➂ ➃ ➄ ➅ ➆ ➇ ➈ ➉ '
+    '☠ ☢ ☣ ☹ ♕ ☻ ☺ ♡ ❤ ツ ☼ ㋡ ⌛\ufe0e ☃\ufe0e ✌\ufe0e ☟ ☛ ☜ ☝\ufe0e '
+    '★ ☆ ↑ ↓ ✘ ✓ → ← ❤\ufe0e ❥ ♠\ufe0e ♣\ufe0e ☘\ufe0e'.split())
+
 
 class LogTailer:
     """Incrementally reads a growing log file, yielding only newly-appended lines.

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from areas import blackjack
 from areas.blackjack import Table, hand_total, is_blackjack, soft_text, wrap
 
-REFUSAL = "{}: You can't do that, dummy."
+REFUSAL = '{}: ' + blackjack.REFUSED_MARK
 
 
 def stack(table, *cards):
@@ -222,7 +222,7 @@ def test_only_the_waiting_view_starts_the_clock():
     table = table_with('Pat', 'Bob')
     stack(table, 'K♠', '5♦', '7♣', '4♥', '9♠', '10♦')
     view = table.tick(15)
-    assert table.shown("Bob: You can't do that, dummy.", 16) is None
+    assert table.shown(REFUSAL.format('Bob'), 16) is None
     assert table.shown(list(view), 17) == 2
     assert table.shown(view, 19) is None    # the clock started once
     assert table.deadline == 32

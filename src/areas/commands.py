@@ -76,7 +76,15 @@ EIGHTBALL_ANSWERS = [
     'Outlook not so good.', 'Very doubtful.',
 ]
 
-SLOT_SYMBOLS = ['cherry', 'lemon', 'orange', 'bell', 'bar', 'seven']
+# SLOT_SYMBOLS = ['cherry', 'lemon', 'orange', 'bell', 'bar', 'seven']
+SLOT_SYMBOLS = ['♠', '✿', '❤', '♿', '♛', '7']
+SLOTS_JACKPOT = '★ JACKPOT ★'
+
+FLIP_SIDES = ['Ⓗ Heads', 'Ⓣ Tails']
+FORTUNE_MARK = '☘\ufe0e'
+TICKER_UP, TICKER_DOWN = '↑', '↓'
+FAIL_MARK = '✘'            # a fetch that failed, or no data for a symbol
+WAIT_MARK = '⌛\ufe0e'      # the AlphaVantage rate limit
 
 Reply = Optional[Union[str, List[str]]]
 
@@ -229,7 +237,7 @@ class CommandBotArea(ChatArea):
         reels = [random.choice(SLOT_SYMBOLS) for _ in range(3)]
         line = ' | '.join(reels)
         if reels[0] == reels[1] == reels[2]:
-            line += ' - JACKPOT!'
+            line += f' {SLOTS_JACKPOT}'
         return tagged(tag, line)
 
     async def _cmd_8ball(self, arg: str, tag: str = '8BALL') -> Reply:
@@ -247,7 +255,7 @@ class CommandBotArea(ChatArea):
         return tagged(tag, f'{random.randint(1, sides)} (d{sides})')
 
     async def _cmd_flip(self, arg: str, tag: str = 'FLIP') -> Reply:
-        return tagged(tag, random.choice(['Heads', 'Tails']))
+        return tagged(tag, random.choice(FLIP_SIDES))
 
     async def _cmd_dadjoke(self, arg: str, tag: str = 'DADJOKE') -> Reply:
         try:
@@ -256,7 +264,7 @@ class CommandBotArea(ChatArea):
             return tagged(tag, text.strip())
         except Exception as e:
             logger.warning(f'dadjoke fetch failed: {e}')
-            return tagged(tag, "couldn't fetch a joke right now")
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch a joke right now")
 
     async def _cmd_fact(self, arg: str, tag: str = 'FACT') -> Reply:
         try:
@@ -264,7 +272,7 @@ class CommandBotArea(ChatArea):
             return tagged(tag, (data.get('text') or '').strip())
         except Exception as e:
             logger.warning(f'fact fetch failed: {e}')
-            return tagged(tag, "couldn't fetch a fact right now")
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch a fact right now")
 
     async def _cmd_quote(self, arg: str, tag: str = 'QUOTE') -> Reply:
         try:
@@ -277,17 +285,17 @@ class CommandBotArea(ChatArea):
             return tagged(tag, f'{text} - {author}' if author else text)
         except Exception as e:
             logger.warning(f'quote fetch failed: {e}')
-            return tagged(tag, "couldn't fetch a quote right now")
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch a quote right now")
 
     async def _cmd_fortunecookie(self, arg: str, tag: str = 'FORTUNE') -> Reply:
         try:
             data = await _http_get_json(FORTUNE_URL)
             # adviceslip serves text/html, but _http_get_json parses it anyway.
             advice = (data.get('slip') or {}).get('advice') or ''
-            return tagged(tag, advice.strip())
+            return tagged(tag, f'{FORTUNE_MARK} {advice.strip()}')
         except Exception as e:
             logger.warning(f'fortunecookie fetch failed: {e}')
-            return tagged(tag, "couldn't fetch advice right now")
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch advice right now")
 
     async def _cmd_ticker(self, arg: str, tag: str = 'TICKER') -> Reply:
         # Only two AlphaVantage functions are supported: GLOBAL_QUOTE (one token)
@@ -301,27 +309,27 @@ class CommandBotArea(ChatArea):
                 sym = tokens[0]
                 data = await _http_get_json(_ticker_url(function='GLOBAL_QUOTE', symbol=sym))
                 if self._alphavantage_rate_limited(data):
-                    return tagged(tag, 'rate limit reached, try later')
+                    return tagged(tag, f'{WAIT_MARK} rate limit reached, try later')
                 quote = data.get('Global Quote') or {}
                 if not quote:
-                    return tagged(tag, f'no data for {sym}')
+                    return tagged(tag, f'{FAIL_MARK} no data for {sym}')
                 price = float(quote.get('05. price', 0))
                 pct = (quote.get('10. change percent') or '').strip().rstrip('%')
-                sign = '+' if not pct.startswith('-') else ''
-                return tagged(tag, f'{sym} ${price:.2f} ({sign}{pct}%)')
+                arrow = TICKER_DOWN if pct.startswith('-') else TICKER_UP
+                return tagged(tag, f'{sym} ${price:.2f} ({arrow}{pct.lstrip("-")}%)')
 
             # Two (or more) tokens: treat the first two as a currency pair.
             frm, to = tokens[0], tokens[1]
             data = await _http_get_json(_ticker_url(
                 function='CURRENCY_EXCHANGE_RATE', from_currency=frm, to_currency=to))
             if self._alphavantage_rate_limited(data):
-                return tagged(tag, 'rate limit reached, try later')
+                return tagged(tag, f'{WAIT_MARK} rate limit reached, try later')
             rate = float((data.get('Realtime Currency Exchange Rate') or {})
                          .get('5. Exchange Rate', 0))
             return tagged(tag, f'{frm}/{to} {rate:.4f}')
         except Exception as e:
             logger.warning(f'ticker fetch failed: {e}')
-            return tagged(tag, "couldn't fetch ticker data right now")
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch ticker data right now")
 
     @staticmethod
     def _alphavantage_rate_limited(data) -> bool:

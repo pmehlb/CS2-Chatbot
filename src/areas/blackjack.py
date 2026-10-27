@@ -72,6 +72,8 @@ STALE_SECONDS = 120
 
 # Marks each hand that needs a move in the players line.
 CURRENT_MARK = '>>'
+# The whole reply to a move that is not allowed: '<name>: ✘'.
+REFUSED_MARK = '✘'
 
 # The players line wraps between entries past this many characters, below the
 # 221-character chat limit, so the chat chunker never cuts a name or a card.
@@ -325,7 +327,7 @@ class Table:
 
     @staticmethod
     def _refuse(name: str) -> str:
-        return f"{name}: You can't do that, dummy."
+        return f'{name}: {REFUSED_MARK}'
 
     # ------------------------------------------------------------------ round flow
 
