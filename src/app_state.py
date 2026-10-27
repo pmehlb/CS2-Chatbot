@@ -131,13 +131,14 @@ class AppState:
     # command areas opt out of it.
     last_speaker: str = ''
     # The channel ('all' or 'team') of that message (runtime only). The Command
-    # Bot's blackjack table posts its timer lines (the deal, a turn running
-    # out) in the channel where !blackjack was typed.
+    # Bot's blackjack table posts its timer lines (the deal, a round clock
+    # running out) in the channel where !blackjack was typed.
     last_channel: str = 'all'
 
     # Chat lines the active area answers in arrival order instead of newest-wins
     # (ChatArea.queues_message: the blackjack commands), as (message, channel,
-    # name). The chat loop answers one per tick. Runtime only, and bounded so a
+    # name). The chat loop sends at most one reply per tick. A line with no
+    # reply (a blackjack move) uses no tick. Runtime only, and bounded so a
     # flood cannot back up for minutes.
     chat_queue: deque = field(default_factory=lambda: deque(maxlen=32))
 

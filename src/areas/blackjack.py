@@ -11,11 +11,12 @@ A table runs in three states:
                 closes, ``tick()`` deals.
   * playing  -- rounds. Everyone moves at the same time: each hand still in
                 play takes one ``!hit`` / ``!stand`` / ``!double`` /
-                ``!split``. Moves get no reply. When every open hand has a
+                ``!split``. A move locks at once and gets no reply. A second
+                move for the same hand is refused. When every open hand has a
                 move, or the round clock runs out (a hand with no move
                 stands), the moves apply in seat order and the next table view
-                goes out. When no hand is left in play, the dealer plays and
-                the results end the round.
+                goes out. When no hand is left in play, the dealer plays, the
+                results go out, and the table closes.
 
 The round clock starts when the table view shows in chat (``shown()``), not
 when the table builds it. The keypresses and the console.log lag would
@@ -235,7 +236,7 @@ class Table:
         self.seats = [Seat(name)]
         self.deadline = now + self.join_seconds
         return (f'Blackjack table open. !join in {self.join_seconds}s. '
-                f'{self.turn_seconds}s per turn, then auto-stand.')
+                f'{self.turn_seconds}s per round, then auto-stand.')
 
     def join(self, name: str, now: float):
         """!join: take a seat during the join window."""
@@ -290,8 +291,8 @@ class Table:
         return lag
 
     def _move(self, name: str, move: str, hand_arg: str, now: float):
-        """Record one move for this round. Silent until the round is complete;
-        the last move in shows the next table view."""
+        """Lock one move for this round, with no reply. The last move in ends
+        the round at once, without a wait for the clock."""
         target = self._target(name, hand_arg)
         if target is None:
             return self._refuse(name)

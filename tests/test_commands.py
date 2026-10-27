@@ -67,23 +67,24 @@ def test_disabled_command_returns_none():
 
 def test_ping():
     area = make_area()
-    assert run(area.generate('!ping', area.app)) == 'pong'
+    assert run(area.generate('!ping', area.app)) == '[PING] pong'
 
 
 def test_command_is_case_insensitive():
     area = make_area()
-    assert run(area.generate('!PING', area.app)) == 'pong'
+    assert run(area.generate('!PING', area.app)) == '[PING] pong'
 
 
 def test_flip_seeded():
     area = make_area()
     random.seed(1)
-    assert run(area.generate('!flip', area.app)) in ('flip: Heads', 'flip: Tails')
+    assert run(area.generate('!flip', area.app)) in ('[FLIP] Heads', '[FLIP] Tails')
 
 
 def test_roll_default_and_arg():
     area = make_area()
     random.seed(0)
+    assert run(area.generate('!roll', area.app)).startswith('[ROLL] ')
     assert run(area.generate('!roll', area.app)).endswith('(d6)')
     assert run(area.generate('!roll 20', area.app)).endswith('(d20)')
 
@@ -107,14 +108,14 @@ def test_slots_jackpot_format():
         out = run(area.generate('!slots', area.app))
     finally:
         commands.random.choice = original
-    assert out == 'slots: seven | seven | seven - JACKPOT!'
+    assert out == '[SLOTS] seven | seven | seven - JACKPOT!'
 
 
 def test_8ball_prefix_and_known_answer():
     area = make_area()
     out = run(area.generate('!8ball will I win', area.app))
-    assert out.startswith('8ball: ')
-    assert out[len('8ball: '):] in commands.EIGHTBALL_ANSWERS
+    assert out.startswith('[8BALL] ')
+    assert out[len('[8BALL] '):] in commands.EIGHTBALL_ANSWERS
 
 
 def test_help_is_three_lines_of_enabled_only():
@@ -181,7 +182,7 @@ def test_dadjoke_success():
         out = run(area.generate('!dadjoke', area.app))
     finally:
         commands._http_get_text = original
-    assert out == 'Why did the chicken cross the road?'
+    assert out == '[DADJOKE] Why did the chicken cross the road?'
 
 
 def test_dadjoke_failure_returns_error():
@@ -312,7 +313,10 @@ def test_fortunecookie_failure_returns_error():
 def test_ticker_stock_success():
     area = make_area()
 
+    urls = []
+
     async def fake_json(url, headers=None):
+        urls.append(url)
         return {'Global Quote': {'01. symbol': 'AAPL', '05. price': '195.1200',
                                  '10. change percent': '1.2300%'}}
 
@@ -323,12 +327,17 @@ def test_ticker_stock_success():
     finally:
         commands._http_get_json = original
     assert out == '[TICKER] AAPL $195.12 (+1.2300%)'
+    assert urls == [f'{commands.TICKER_URL}?function=GLOBAL_QUOTE&symbol=AAPL'
+                    f'&apikey={commands.ALPHAVANTAGE_KEY}']
 
 
 def test_ticker_currency_success():
     area = make_area()
 
+    urls = []
+
     async def fake_json(url, headers=None):
+        urls.append(url)
         return {'Realtime Currency Exchange Rate': {'5. Exchange Rate': '157.20000000'}}
 
     original = commands._http_get_json
@@ -338,6 +347,8 @@ def test_ticker_currency_success():
     finally:
         commands._http_get_json = original
     assert out == '[TICKER] USD/JPY 157.2000'
+    assert urls == [f'{commands.TICKER_URL}?function=CURRENCY_EXCHANGE_RATE'
+                    f'&from_currency=USD&to_currency=JPY&apikey={commands.ALPHAVANTAGE_KEY}']
 
 
 def test_ticker_no_arg_returns_usage():

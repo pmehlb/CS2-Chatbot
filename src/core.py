@@ -597,8 +597,9 @@ def _reply_waiting(app) -> bool:
 async def _answer_queue(app, area) -> bool:
     """Answer queued chat lines, oldest first, until one sends a reply.
 
-    A line that gets no reply (a !hit out of turn) costs nothing, so the next
-    one goes in the same tick. True if a reply went out.
+    A line that gets no reply costs nothing, so the next one goes in the same
+    tick. A blackjack move gets no reply, so every move typed in one tick
+    locks in that tick. True if a reply went out.
     """
     while app.chat_queue:
         message, channel, name = app.chat_queue.popleft()
@@ -710,9 +711,10 @@ async def handle_tick(app) -> None:
             await _react_to_event(app, area, event)
             return
 
-    # Queued lines (the blackjack commands) come next, one reply per tick in
-    # arrival order, then the area timers (the deal, a turn running out). The
-    # queue goes first so a !hit typed before the turn ran out still counts.
+    # Queued lines (the blackjack commands) come next, oldest first, with at
+    # most one reply per tick. Then the area timers (the deal, a round clock
+    # running out). The queue goes first so a !hit typed before the round
+    # clock ran out still counts.
     # Like an event, either one takes this tick from the newest-wins chat line.
     if not _reply_waiting(app):
         if await _answer_queue(app, area) or await _run_timers(app, area):

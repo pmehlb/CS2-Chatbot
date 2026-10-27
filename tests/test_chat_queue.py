@@ -106,7 +106,7 @@ def test_other_commands_keep_newest_wins(app):
     tick(app, ('Bob', '!ping'), ('Al', '!flip'))
     tick(app)
     assert len(app.sent) == 1
-    assert app.sent[0].startswith('flip: ')
+    assert app.sent[0].startswith('[FLIP] ')
     assert not app.chat_queue
 
 

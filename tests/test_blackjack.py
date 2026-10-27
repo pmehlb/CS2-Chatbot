@@ -72,7 +72,7 @@ def test_wrap_breaks_only_between_entries():
 def test_open_announces_join_window_and_turn_timer():
     table = Table(turn_seconds=20, join_seconds=10)
     assert table.open('Pat', 'team', 0) == \
-        'Blackjack table open. !join in 10s. 20s per turn, then auto-stand.'
+        'Blackjack table open. !join in 10s. 20s per round, then auto-stand.'
     assert table.state == blackjack.JOINING
     assert table.channel == 'team'
 

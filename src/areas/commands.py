@@ -7,8 +7,8 @@ CS2 font compatibility; the blackjack card suits are the one exception. A few
 commands hit free web APIs via httpx; the rest are local.
 
 !blackjack runs a table (areas/blackjack.py) with timers of its own: the deal
-after the join window and the stand when a turn runs out. Those lines go out
-through generate_timed(), which the chat loop polls on every tick.
+after the join window and the end of a round when its clock runs out. Those
+lines go out through generate_timed(), which the chat loop polls on every tick.
 """
 import logging
 import random
@@ -27,12 +27,13 @@ from .base import ChatArea
 logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = 5  # seconds for network commands
-# icanhazdadjoke asks API users to send a descriptive User-Agent.
-DADJOKE_UA = 'CS2-Chatbot (https://github.com/)'
-# AlphaVantage API key for !ticker (user-provided, in-source by request).
-# Free tier is rate-limited to ~25 requests/day; on limit the API returns a
-# JSON body with a 'Note'/'Information' key instead of data (see _cmd_ticker).
-ALPHAVANTAGE_KEY = 'JCFJ95WG36YQ7166'
+
+# !dadjoke source. icanhazdadjoke asks API users to send a descriptive User-Agent.
+DADJOKE_URL = 'https://icanhazdadjoke.com/'
+DADJOKE_UA = 'CS2-Chatbot (https://github.com/pmehlb/CS2-Chatbot)'
+
+# !fact source.
+FACT_URL = 'https://uselessfacts.jsph.pl/api/v2/facts/random?language=en'
 
 # !quote source. dummyjson has no length filter, so a long quote is re-rolled
 # a few times before the bot settles for it.
@@ -40,14 +41,25 @@ QUOTE_URL = 'https://dummyjson.com/quotes/random'
 QUOTE_MAX_LEN = 130
 QUOTE_TRIES = 3
 
+# !fortunecookie source.
+FORTUNE_URL = 'https://api.adviceslip.com/advice'
+
+# !ticker source. _ticker_url() adds the query string and the API key.
+# The AlphaVantage key is user-provided, in-source by request. Free tier is
+# rate-limited to ~25 requests/day; on limit the API returns a JSON body with
+# a 'Note'/'Information' key instead of data (see _cmd_ticker).
+TICKER_URL = 'https://www.alphavantage.co/query'
+ALPHAVANTAGE_KEY = 'JCFJ95WG36YQ7166'
+
 # The blackjack settings in the C2 tab: table attribute, label, bounds, tooltip.
 BJ_SECONDS_RANGE = (5, 120)
 BJ_DECKS_RANGE = (1, 8)
 BJ_FIELDS = (
     ('join_seconds', 'Join window (s)', BJ_SECONDS_RANGE,
      'Time between !blackjack and the deal. Players type !join in this window.'),
-    ('turn_seconds', 'Turn timer (s)', BJ_SECONDS_RANGE,
-     'Time each player gets to !hit or !stand. When it runs out, the player stands.'),
+    ('turn_seconds', 'Round timer (s)', BJ_SECONDS_RANGE,
+     'Time for each round. All players move at the same time. The round ends when every '
+     'hand has a move or the timer runs out. A hand with no move stands.'),
     ('decks', 'Decks in shoe', BJ_DECKS_RANGE,
      'Decks shuffled together. The shoe reshuffles when less than a quarter is left. '
      'A change takes effect at the next deal.'),
@@ -78,6 +90,17 @@ class Command:
     # Follow-up commands that only work while this one is enabled (!join,
     # !hit, !stand for !blackjack). No checkbox of their own.
     subcommands: Dict[str, Callable[[str], Awaitable[Reply]]] = field(default_factory=dict)
+
+
+def tagged(tag: str, text: str) -> str:
+    """One command reply: '[TAG] text'. Each handler gives its tag as the
+    default of its ``tag`` parameter, so a tag changes in one place."""
+    return f'[{tag}] {text}'
+
+
+def _ticker_url(**params) -> str:
+    """TICKER_URL with an AlphaVantage query string and the API key."""
+    return f'{TICKER_URL}?' + urllib.parse.urlencode({**params, 'apikey': ALPHAVANTAGE_KEY})
 
 
 async def _http_get_text(url, headers=None) -> str:
@@ -163,7 +186,7 @@ class CommandBotArea(ChatArea):
         return await handler(arg.strip())
 
     def queues_message(self, message: str) -> bool:
-        """Blackjack commands go in order: two !join lines in one tick both count."""
+        """Blackjack commands go in order, so every !join and every move in one tick counts."""
         if not self._is_enabled('blackjack'):
             return False
         name = (message or '').strip()[1:].partition(' ')[0].lower()
@@ -199,20 +222,20 @@ class CommandBotArea(ChatArea):
         bar = '=-' * 12
         return [bar, 'Commands: ' + '  '.join(usages), bar]
 
-    async def _cmd_ping(self, arg: str) -> Reply:
-        return 'pong'
+    async def _cmd_ping(self, arg: str, tag: str = 'PING') -> Reply:
+        return tagged(tag, 'pong')
 
-    async def _cmd_slots(self, arg: str) -> Reply:
+    async def _cmd_slots(self, arg: str, tag: str = 'SLOTS') -> Reply:
         reels = [random.choice(SLOT_SYMBOLS) for _ in range(3)]
-        line = 'slots: ' + ' | '.join(reels)
+        line = ' | '.join(reels)
         if reels[0] == reels[1] == reels[2]:
             line += ' - JACKPOT!'
-        return line
+        return tagged(tag, line)
 
-    async def _cmd_8ball(self, arg: str) -> Reply:
-        return '8ball: ' + random.choice(EIGHTBALL_ANSWERS)
+    async def _cmd_8ball(self, arg: str, tag: str = '8BALL') -> Reply:
+        return tagged(tag, random.choice(EIGHTBALL_ANSWERS))
 
-    async def _cmd_roll(self, arg: str) -> Reply:
+    async def _cmd_roll(self, arg: str, tag: str = 'ROLL') -> Reply:
         parts = arg.split()
         sides = 6
         if parts:
@@ -221,31 +244,29 @@ class CommandBotArea(ChatArea):
             except ValueError:
                 sides = 6
         sides = max(2, min(1000, sides))
-        return f'roll: {random.randint(1, sides)} (d{sides})'
+        return tagged(tag, f'{random.randint(1, sides)} (d{sides})')
 
-    async def _cmd_flip(self, arg: str) -> Reply:
-        return 'flip: ' + random.choice(['Heads', 'Tails'])
+    async def _cmd_flip(self, arg: str, tag: str = 'FLIP') -> Reply:
+        return tagged(tag, random.choice(['Heads', 'Tails']))
 
-    async def _cmd_dadjoke(self, arg: str) -> Reply:
+    async def _cmd_dadjoke(self, arg: str, tag: str = 'DADJOKE') -> Reply:
         try:
             text = await _http_get_text(
-                'https://icanhazdadjoke.com/',
-                headers={'Accept': 'text/plain', 'User-Agent': DADJOKE_UA})
-            return text.strip()
+                DADJOKE_URL, headers={'Accept': 'text/plain', 'User-Agent': DADJOKE_UA})
+            return tagged(tag, text.strip())
         except Exception as e:
             logger.warning(f'dadjoke fetch failed: {e}')
-            return "[DADJOKE] couldn't fetch a joke right now"
+            return tagged(tag, "couldn't fetch a joke right now")
 
-    async def _cmd_fact(self, arg: str) -> Reply:
+    async def _cmd_fact(self, arg: str, tag: str = 'FACT') -> Reply:
         try:
-            data = await _http_get_json(
-                'https://uselessfacts.jsph.pl/api/v2/facts/random?language=en')
-            return '[FACT] ' + (data.get('text') or '').strip()
+            data = await _http_get_json(FACT_URL)
+            return tagged(tag, (data.get('text') or '').strip())
         except Exception as e:
             logger.warning(f'fact fetch failed: {e}')
-            return "[FACT] couldn't fetch a fact right now"
+            return tagged(tag, "couldn't fetch a fact right now")
 
-    async def _cmd_quote(self, arg: str) -> Reply:
+    async def _cmd_quote(self, arg: str, tag: str = 'QUOTE') -> Reply:
         try:
             for _ in range(QUOTE_TRIES):
                 data = await _http_get_json(QUOTE_URL)
@@ -253,58 +274,54 @@ class CommandBotArea(ChatArea):
                 if len(text) <= QUOTE_MAX_LEN:
                     break
             author = (data.get('author') or '').strip()
-            return f'[QUOTE] {text} - {author}' if author else f'[QUOTE] {text}'
+            return tagged(tag, f'{text} - {author}' if author else text)
         except Exception as e:
             logger.warning(f'quote fetch failed: {e}')
-            return "[QUOTE] couldn't fetch a quote right now"
+            return tagged(tag, "couldn't fetch a quote right now")
 
-    async def _cmd_fortunecookie(self, arg: str) -> Reply:
+    async def _cmd_fortunecookie(self, arg: str, tag: str = 'FORTUNE') -> Reply:
         try:
-            data = await _http_get_json('https://api.adviceslip.com/advice')
+            data = await _http_get_json(FORTUNE_URL)
             # adviceslip serves text/html, but _http_get_json parses it anyway.
             advice = (data.get('slip') or {}).get('advice') or ''
-            return '[FORTUNE] ' + advice.strip()
+            return tagged(tag, advice.strip())
         except Exception as e:
             logger.warning(f'fortunecookie fetch failed: {e}')
-            return "[FORTUNE] couldn't fetch advice right now"
+            return tagged(tag, "couldn't fetch advice right now")
 
-    async def _cmd_ticker(self, arg: str) -> Reply:
+    async def _cmd_ticker(self, arg: str, tag: str = 'TICKER') -> Reply:
         # Only two AlphaVantage functions are supported: GLOBAL_QUOTE (one token)
         # and CURRENCY_EXCHANGE_RATE (two tokens). Free tier is ~25 req/day; on
         # rate-limit the API returns a 'Note'/'Information' key instead of data.
         tokens = [t.upper() for t in arg.split()]
         if not tokens:
-            return '[TICKER] usage !ticker <SYMBOL>  or  !ticker <FROM> <TO>'
+            return tagged(tag, 'usage !ticker <SYMBOL>  or  !ticker <FROM> <TO>')
         try:
             if len(tokens) == 1:
                 sym = tokens[0]
-                url = ('https://www.alphavantage.co/query?function=GLOBAL_QUOTE'
-                       f'&symbol={urllib.parse.quote(sym)}&apikey={ALPHAVANTAGE_KEY}')
-                data = await _http_get_json(url)
+                data = await _http_get_json(_ticker_url(function='GLOBAL_QUOTE', symbol=sym))
                 if self._alphavantage_rate_limited(data):
-                    return '[TICKER] rate limit reached, try later'
+                    return tagged(tag, 'rate limit reached, try later')
                 quote = data.get('Global Quote') or {}
                 if not quote:
-                    return f'[TICKER] no data for {sym}'
+                    return tagged(tag, f'no data for {sym}')
                 price = float(quote.get('05. price', 0))
                 pct = (quote.get('10. change percent') or '').strip().rstrip('%')
                 sign = '+' if not pct.startswith('-') else ''
-                return f'[TICKER] {sym} ${price:.2f} ({sign}{pct}%)'
+                return tagged(tag, f'{sym} ${price:.2f} ({sign}{pct}%)')
 
             # Two (or more) tokens: treat the first two as a currency pair.
             frm, to = tokens[0], tokens[1]
-            url = ('https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE'
-                   f'&from_currency={urllib.parse.quote(frm)}'
-                   f'&to_currency={urllib.parse.quote(to)}&apikey={ALPHAVANTAGE_KEY}')
-            data = await _http_get_json(url)
+            data = await _http_get_json(_ticker_url(
+                function='CURRENCY_EXCHANGE_RATE', from_currency=frm, to_currency=to))
             if self._alphavantage_rate_limited(data):
-                return '[TICKER] rate limit reached, try later'
+                return tagged(tag, 'rate limit reached, try later')
             rate = float((data.get('Realtime Currency Exchange Rate') or {})
                          .get('5. Exchange Rate', 0))
-            return f'[TICKER] {frm}/{to} {rate:.4f}'
+            return tagged(tag, f'{frm}/{to} {rate:.4f}')
         except Exception as e:
             logger.warning(f'ticker fetch failed: {e}')
-            return "[TICKER] couldn't fetch ticker data right now"
+            return tagged(tag, "couldn't fetch ticker data right now")
 
     @staticmethod
     def _alphavantage_rate_limited(data) -> bool:

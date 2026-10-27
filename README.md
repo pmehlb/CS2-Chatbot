@@ -107,9 +107,11 @@ More on each group:
   (C2) answers `!`-commands, and you flip each one on or off. `!blackjack` opens
   a table against the dealer: players `!join`, then play rounds with `!hit`,
   `!stand`, `!double`, and `!split` (no limit on splits). Everyone moves at the
-  same time, and the bot shows the table once all moves are in, or when the
-  turn timer runs out. The timer starts when the table shows in chat. The tab sets the join window, the turn timer, and the shoe size
-  (6 decks by default). Mimic repeats the
+  same time: a move locks at once and gets no reply. The round ends when every
+  hand has a move, or when the round timer runs out (a hand with no move
+  stands). Then the bot shows the table for the next round. The timer starts
+  when the table shows in chat. The tab sets the join window, the round timer,
+  and the shoe size (6 decks by default). Mimic repeats the
   last message with random capitalization; Reverser reverses it, with optional
   find-and-replace first. Both are handy for testing the read → reply pipeline
   before you point an AI at it.

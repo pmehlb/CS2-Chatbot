@@ -82,8 +82,10 @@ class ChatArea:
         """True to answer ``message`` in arrival order instead of newest-wins.
 
         The chat loop normally answers only the newest line of a tick. A line
-        this claims goes onto a queue instead, and the loop answers the queue
-        one reply per tick, oldest first. Default: nothing is queued.
+        this claims goes onto a queue instead. The loop answers the queue
+        oldest first and sends at most one reply per tick. A line with no
+        reply uses no tick, so the loop answers the next line in the same
+        tick. Default: nothing is queued.
         """
         return False
 
@@ -93,7 +95,7 @@ class ChatArea:
         The chat loop asks on every tick it is allowed to send (bot on, this
         tab active, cooldown clear), before it answers chat. Return
         ``(reply, channel)`` when a timer is due -- the blackjack deal or a
-        turn running out. Default: areas have no timers.
+        round clock running out. Default: areas have no timers.
         """
         return None
 
