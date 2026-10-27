@@ -93,7 +93,8 @@ def test_keypress_waits_out_the_gap_after_your_last_line(tmp_path, events):
 
     asyncio.run(core.send_to_game('Blackjack table open.', app, 'all'))
 
-    assert events[0][0] == 'sleep' and 0.5 <= events[0][1] <= core.MIN_CHAT_GAP
+    assert events[0][0] == 'sleep'
+    assert core.MIN_CHAT_GAP - 0.1 <= events[0][1] <= core.MIN_CHAT_GAP
     assert events[1] == ('key', 'p')
 
 

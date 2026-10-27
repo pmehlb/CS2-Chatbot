@@ -34,9 +34,7 @@ READ_LOG_SECONDS = 1.0
 
 # CS2 drops a chat line that an account sends too soon after its previous one,
 # with no error. In console.log (2026-10-10), a reply sent 0-0.1 s after the
-# account's own line never showed, and one sent 0.5 s after did. After a chat
-# line from steam_nick (you), each keypress waits until this much time passes.
-# Replies to other players go out at once.
+# account's own line never showed, and one sent 0.6 s after did.
 MIN_CHAT_GAP = 0.6
 
 # Symbols that show in CS2 chat, tested in game (2026-10-26). A reference for
@@ -47,6 +45,11 @@ CHAT_SYMBOLS = tuple(
     '➀ ➁ ➂ ➃ ➄ ➅ ➆ ➇ ➈ ➉ '
     '☠ ☢ ☣ ☹ ♕ ☻ ☺ ♡ ❤ ツ ☼ ㋡ ⌛\ufe0e ☃\ufe0e ✌\ufe0e ☟ ☛ ☜ ☝\ufe0e '
     '★ ☆ ↑ ↓ ✘ ✓ → ← ❤\ufe0e ❥ ♠\ufe0e ♣\ufe0e ☘\ufe0e'.split())
+
+# A hidden command that every area answers with a fixed line, in place of the
+# area reply. It has no docs and no !help line.
+IDENTIFY_COMMAND = '!identify'
+IDENTIFY_REPLY = '[CS2-Chatbot] made by @laffyfx'
 
 
 class LogTailer:
@@ -630,6 +633,9 @@ async def _answer_chat(app, area, message, channel, name) -> bool:
     app.last_speaker = name or ''
     app.last_channel = channel or 'all'
 
+    # Read before the speaker prefix below changes the message.
+    identify = message.strip().partition(' ')[0].lower() == IDENTIFY_COMMAND
+
     # Optionally tag the message with who said it, so AI chatbots can track the
     # speaker. Areas that parse/transform the raw text opt out (see helper).
     message = attribute_message(message, name, app, area)
@@ -642,7 +648,7 @@ async def _answer_chat(app, area, message, channel, name) -> bool:
     started = time.monotonic()
     try:
         logger.debug(f"[{area.key}] generating a reply to {message!r}")
-        reply = await area.generate(message, app)
+        reply = IDENTIFY_REPLY if identify else await area.generate(message, app)
     except Exception as e:
         # The elapsed time separates "the API refused us" from "the API never
         # answered", which are different problems with the same symptom.
