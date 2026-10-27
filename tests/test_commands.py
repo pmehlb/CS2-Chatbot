@@ -119,14 +119,23 @@ def test_8ball_prefix_and_known_answer():
     assert out[len('[8BALL] '):] in commands.EIGHTBALL_ANSWERS
 
 
-def test_help_is_three_lines_of_enabled_only():
+def test_help_is_one_line_per_category_of_enabled_only():
     area = make_area()
     area.enabled = {'fact': False, 'dadjoke': False}
     out = run(area.generate('!help', area.app))
-    assert isinstance(out, list) and len(out) == 3
-    assert out[0] == out[2] and set(out[0]) == {'=', '-'}
-    assert '!ping' in out[1]
-    assert '!fact' not in out[1] and '!dadjoke' not in out[1]
+    assert out[0] == out[-1] and set(out[0]) == {'=', '-'}
+    # !help itself is not listed, and the blackjack moves are not either.
+    assert out[1:-1] == [
+        'Games: !slots !8ball [question] !roll [n] !flip !blackjack',
+        'Random: !quote !fortunecookie',
+        'Tools: !ping !ticker [symbol | from to]',
+    ]
+
+
+def test_help_skips_a_category_with_nothing_enabled():
+    area = make_area()
+    area.enabled = {name: False for name in ('dadjoke', 'fact', 'quote', 'fortunecookie')}
+    assert not any(line.startswith('Random:') for line in area._help_lines())
 
 
 def test_help_button_source_matches_help_command():
@@ -158,8 +167,8 @@ def test_send_help_writes_all_say_lines_at_once():
             content = f.read()
 
     say_lines = [ln for ln in content.splitlines() if ln.startswith('say "')]
-    assert len(say_lines) == 3
-    assert 'Commands:' in content and '!ping' in content
+    assert len(say_lines) == 5
+    assert 'Games:' in content and '!ping' in content
 
 
 def test_is_ready_requires_one_enabled():
@@ -435,10 +444,10 @@ def test_ticker_failure_returns_error():
 
 def test_help_includes_new_commands_when_enabled():
     area = make_area()
-    out = run(area.generate('!help', area.app))
-    assert '!quote' in out[1]
-    assert '!fortunecookie' in out[1]
-    assert '!ticker' in out[1]
+    text = ' '.join(run(area.generate('!help', area.app)))
+    assert '!quote' in text
+    assert '!fortunecookie' in text
+    assert '!ticker' in text
 
 
 # ---------------------------------------------------------------------- blackjack
@@ -477,7 +486,9 @@ def test_subcommands_have_no_checkbox_or_help_entry():
     area = make_area()
     assert set(area.registry) >= {'blackjack'}
     assert not {'join', 'hit', 'stand', 'double', 'split'} & set(area.registry)
-    assert '!blackjack (!join !hit !stand !double !split [#])' in area._help_lines()[1]
+    text = ' '.join(area._help_lines())
+    assert '!blackjack' in text
+    assert not any(f'!{sub}' in text for sub in ('join', 'hit', 'stand', 'double', 'split'))
 
 
 def test_generate_timed_deals_into_the_table_channel():

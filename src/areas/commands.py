@@ -88,12 +88,16 @@ WAIT_MARK = '⌛\ufe0e'      # the AlphaVantage rate limit
 
 Reply = Optional[Union[str, List[str]]]
 
+# !help gives one line per category, in this order.
+HELP_CATEGORIES = ('Games', 'Random', 'Tools')
+
 
 @dataclass
 class Command:
     name: str                          # token after '!', lowercase (e.g. 'ping')
     usage: str                         # shown in !help (e.g. '!8ball [question]')
     desc: str                          # checkbox sub-label
+    category: str                      # its !help line (HELP_CATEGORIES); '' = not listed
     handler: Callable[[str], Awaitable[Reply]]
     # Follow-up commands that only work while this one is enabled (!join,
     # !hit, !stand for !blackjack). No checkbox of their own.
@@ -139,23 +143,25 @@ class CommandBotArea(ChatArea):
         self.enabled = {}               # name -> bool (absent = on by default)
         self.table = blackjack.Table()
 
-        # Ordered registry; order drives both the checkbox list and !help.
+        # Ordered registry; order drives the checkbox list and the order
+        # inside each !help line.
         ordered = [
-            Command('help', '!help', 'list available commands', self._cmd_help),
-            Command('ping', '!ping', 'replies "pong"', self._cmd_ping),
-            Command('slots', '!slots', 'roll a slot machine', self._cmd_slots),
-            Command('8ball', '!8ball [question]', 'magic 8-ball', self._cmd_8ball),
-            Command('roll', '!roll [n]', 'roll a die (default d6)', self._cmd_roll),
-            Command('flip', '!flip', 'flip a coin', self._cmd_flip),
-            Command('dadjoke', '!dadjoke', 'random dad joke', self._cmd_dadjoke),
-            Command('fact', '!fact', 'random fact', self._cmd_fact),
-            Command('quote', '!quote', 'random quote', self._cmd_quote),
-            Command('fortunecookie', '!fortunecookie', 'fortune cookie advice',
+            Command('help', '!help', 'list available commands', '', self._cmd_help),
+            Command('ping', '!ping', 'replies "pong"', 'Tools', self._cmd_ping),
+            Command('slots', '!slots', 'roll a slot machine', 'Games', self._cmd_slots),
+            Command('8ball', '!8ball [question]', 'magic 8-ball', 'Games', self._cmd_8ball),
+            Command('roll', '!roll [n]', 'roll a die (default d6)', 'Games', self._cmd_roll),
+            Command('flip', '!flip', 'flip a coin', 'Games', self._cmd_flip),
+            Command('dadjoke', '!dadjoke', 'random dad joke', 'Random', self._cmd_dadjoke),
+            Command('fact', '!fact', 'random fact', 'Random', self._cmd_fact),
+            Command('quote', '!quote', 'random quote', 'Random', self._cmd_quote),
+            Command('fortunecookie', '!fortunecookie', 'fortune cookie advice', 'Random',
                     self._cmd_fortunecookie),
-            Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup',
+            Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup', 'Tools',
                     self._cmd_ticker),
-            Command('blackjack', '!blackjack (!join !hit !stand !double !split [#])',
-                    'blackjack vs the dealer', self._cmd_blackjack,
+            # The table itself tells players about !join and the moves.
+            Command('blackjack', '!blackjack', 'blackjack vs the dealer', 'Games',
+                    self._cmd_blackjack,
                     subcommands={'join': self._cmd_join, 'hit': self._cmd_hit,
                                  'stand': self._cmd_stand, 'double': self._cmd_double,
                                  'split': self._cmd_split}),
@@ -222,13 +228,20 @@ class CommandBotArea(ChatArea):
         return self._help_lines()
 
     def _help_lines(self) -> List[str]:
-        """The 3-line help block (divider / enabled commands / divider).
+        """The help block: a divider, one line per category of enabled
+        commands ('Games: !slots !flip ...'), and a divider. A category with
+        no enabled commands gets no line.
 
         Shared by the !help command and the "Send help" button in the tab.
         """
-        usages = [c.usage for c in self.registry.values() if self._is_enabled(c.name)]
+        lines = []
+        for category in HELP_CATEGORIES:
+            usages = [c.usage for c in self.registry.values()
+                      if c.category == category and self._is_enabled(c.name)]
+            if usages:
+                lines.append(f'{category}: ' + ' '.join(usages))
         bar = '=-' * 12
-        return [bar, 'Commands: ' + '  '.join(usages), bar]
+        return [bar, *lines, bar]
 
     async def _cmd_ping(self, arg: str, tag: str = 'PING') -> Reply:
         return tagged(tag, 'pong')
