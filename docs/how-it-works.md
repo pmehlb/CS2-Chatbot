@@ -65,10 +65,10 @@ Each tick:
    them for chat lines: `  [ALL] ` for all-chat, `  [T] ` / `  [CT] ` for team
    chat. It keeps the newest one and remembers its channel so the reply goes back
    to the same place. An area can claim some lines for a queue instead
-   (`queues_message`). The Command Bot claims the blackjack commands, so two
+   (`queues_message`). The Command Bot claims the blackjack and trivia commands, so two
    `!join` lines in one tick both count. The loop answers the queue oldest
    first and sends at most one reply per tick. A line with no reply uses no
-   tick, so every blackjack move typed in one tick locks in that tick.
+   tick, so every blackjack move or trivia answer typed in one tick locks in that tick.
    On startup the tailer skips whatever is already in the file;
    if CS2 recreates the log (it does each launch), it resets and keeps following.
 
@@ -170,7 +170,8 @@ What replies depends on which tab is open:
   using either its editable canned line pools or a borrowed AI brain.
 - **Command Bot (C2)** answers `!`-prefixed commands (`!help`, `!8ball`,
   `!ticker`, and so on) and stays silent on anything else. `!blackjack` runs a
-  table with its own timers (the deal, a round running out). The loop sends those
+  table with its own timers (the deal, a round running out), and `!trivia` has one
+  timer (the answer time running out). The loop sends those
   lines through `generate_timed`, with no chat line to trigger them.
 - **Mimic** randomizes each letter's case; **String Reverser** reverses the text,
   censoring configured words first.

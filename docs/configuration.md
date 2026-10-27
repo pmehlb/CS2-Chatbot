@@ -35,7 +35,8 @@ in `src/main.py` or `src/ui/gui.py`.
 | `DEFAULT_DECKS` / `DEFAULT_TURN_SECONDS` / `DEFAULT_JOIN_SECONDS` | `6` / `15` / `15` | Blackjack defaults (`areas/blackjack.py`). The C2 tab changes all three, within `BJ_DECKS_RANGE` (1-8) and `BJ_SECONDS_RANGE` (5-120 s) in `areas/commands.py`. |
 | `LINE_LIMIT` | `200` | The blackjack players line wraps between entries past this many characters (`areas/blackjack.py`). It stays below `chat_char_limit`, so the chat chunker never cuts a name or a card. |
 | `CUT_FRACTION` | `0.25` | The blackjack cut card. A new round reshuffles the shoe when less than this share of it is left. |
-| `STALE_SECONDS` | `120` | A blackjack table whose timer is this many seconds overdue closes without a message. This happens when the bot was off or another tab was open. |
+| `STALE_SECONDS` | `120` | A blackjack table whose timer is this many seconds overdue closes without a message. This happens when the bot was off or another tab was open. `areas/trivia.py` has its own `STALE_SECONDS`, with the same value, for a trivia question. |
+| `DEFAULT_ANSWER_SECONDS` | `20` | The time to answer a `!trivia` question (`areas/trivia.py`). The C2 tab changes it, within `TRIVIA_SECONDS_RANGE` (5-120 s) in `areas/commands.py`. |
 
 > To change the bind key, edit `bind_key` **and** update your CS2 bind to match.
 
@@ -83,7 +84,7 @@ file.
 | Character.AI (via `PyCharacterAI`) | `CharacterAIArea` in `areas/characterai.py` | Authentication, character browsing, chat session creation, and message generation. |
 | OpenAI API (via `openai`) | `ChatGPTArea` in `areas/chatgpt.py` | Generates ChatGPT replies (needs an OpenAI API key). |
 | Anthropic Messages API (via `anthropic`) | `ClaudeArea` in `areas/claude.py` | Generates Claude replies (needs an Anthropic API key). |
-| Free keyless web APIs (icanhazdadjoke, uselessfacts, dummyjson, adviceslip, bible-api.com) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, and `!bible`. |
+| Free keyless web APIs (icanhazdadjoke, uselessfacts, dummyjson, adviceslip, bible-api.com, The Trivia API) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, `!bible`, and `!trivia`. |
 | GitHub raw file (`Zen-CODE/ZenKEY`, `Quotes/Confucius says.txt`) | `CommandBotArea` (`!confucius`) | The "Confucius says" sayings. The bot fetches the file on first use and keeps it for the session. |
 | AlphaVantage | `CommandBotArea` (`!ticker`) | Stock quote / currency rate. Uses an in-source free-tier key (rate-limited to ~25 requests/day). |
 

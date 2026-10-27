@@ -7,8 +7,9 @@ CS2 font compatibility; the blackjack card suits are the one exception. A few
 commands hit free web APIs via httpx; the rest are local.
 
 !blackjack runs a table (areas/blackjack.py) with timers of its own: the deal
-after the join window and the end of a round when its clock runs out. Those
-lines go out through generate_timed(), which the chat loop polls on every tick.
+after the join window and the end of a round when its clock runs out. !trivia
+(areas/trivia.py) has one timer: the answer after the answer time. Those lines
+go out through generate_timed(), which the chat loop polls on every tick.
 """
 import logging
 import random
@@ -22,7 +23,7 @@ import httpx
 from nicegui import ui
 
 from ui.ui_util import area_header, settings_card
-from . import blackjack
+from . import blackjack, trivia
 from .base import ChatArea
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,9 @@ CONFUCIUS_URL = ('https://raw.githubusercontent.com/Zen-CODE/ZenKEY/master/'
                  'Quotes/Confucius%20says.txt')
 CONFUCIUS_LINE = re.compile(r'^\s*Confucius says\s+"(.+)"\s*$')
 
+# !trivia source: one multiple-choice question (1 right, 3 wrong answers).
+TRIVIA_URL = 'https://the-trivia-api.com/v2/questions?limit=1'
+
 # !ticker source. _ticker_url() adds the query string and the API key.
 # The AlphaVantage key is user-provided, in-source by request. Free tier is
 # rate-limited to ~25 requests/day; on limit the API returns a JSON body with
@@ -78,6 +82,17 @@ BJ_FIELDS = (
      'Decks shuffled together. The shoe reshuffles when less than a quarter is left. '
      'A change takes effect at the next deal.'),
 )
+
+# The trivia settings in the C2 tab, in the same form.
+TRIVIA_SECONDS_RANGE = (5, 120)
+TRIVIA_FIELDS = (
+    ('answer_seconds', 'Answer time (s)', TRIVIA_SECONDS_RANGE,
+     'Time to answer a !trivia question with !a to !d. The clock starts when the '
+     'question shows in chat. A change takes effect at the next question.'),
+)
+
+# The games, by command name: their settings fields (saved under the same name).
+GAME_FIELDS = {'blackjack': BJ_FIELDS, 'trivia': TRIVIA_FIELDS}
 
 EIGHTBALL_ANSWERS = [
     'It is certain.', 'It is decidedly so.', 'Without a doubt.',
@@ -176,6 +191,9 @@ class CommandBotArea(ChatArea):
         self.app = None
         self.enabled = {}               # name -> bool (absent = on by default)
         self.table = blackjack.Table()
+        self.trivia = trivia.Trivia()
+        # The games with timers, by command name (GAME_FIELDS uses the same names).
+        self.games = {'blackjack': self.table, 'trivia': self.trivia}
         self.confucius: List[str] = []  # the !confucius sayings, fetched on first use
 
         # Ordered registry; order drives the checkbox list and the order
@@ -203,6 +221,12 @@ class CommandBotArea(ChatArea):
                     subcommands={'join': self._cmd_join, 'hit': self._cmd_hit,
                                  'stand': self._cmd_stand, 'double': self._cmd_double,
                                  'split': self._cmd_split}),
+            # The question line itself tells players about !a to !d. A second
+            # run would only get the "in progress" line, so no reroll.
+            Command('trivia', '!trivia', 'trivia question, answer with !a to !d', 'Games',
+                    self._cmd_trivia, reroll=False,
+                    subcommands={letter: self._answer_command(letter)
+                                 for letter in trivia.LETTERS}),
         ]
         self.registry = {c.name: c for c in ordered}
         # Sub-command name -> parent command name, for dispatch.
@@ -245,27 +269,36 @@ class CommandBotArea(ChatArea):
         return shortest
 
     def queues_message(self, message: str) -> bool:
-        """Blackjack commands go in order, so every !join and every move in one tick counts."""
-        if not self._is_enabled('blackjack'):
+        """Game commands go in order, so every !join, move and answer in one tick counts."""
+        text = (message or '').strip()
+        if not text.startswith('!'):
             return False
-        name = (message or '').strip()[1:].partition(' ')[0].lower()
-        return message.strip().startswith('!') and \
-            (name == 'blackjack' or self.parents.get(name) == 'blackjack')
+        name = text[1:].partition(' ')[0].lower()
+        game = self.parents.get(name, name)
+        return game in self.games and self._is_enabled(game)
 
     async def generate_timed(self, app):
-        """The blackjack table's due timer line, sent to its own channel."""
-        if not self._is_enabled('blackjack'):
-            return None
-        channel = self.table.channel   # read first: finishing a round resets it
-        reply = self.table.tick(time.monotonic())
-        return (reply, channel) if reply else None
+        """A game's due timer line, sent to the channel of that game."""
+        for name, game in self.games.items():
+            if not self._is_enabled(name):
+                continue
+            channel = game.channel   # read first: finishing a game resets it
+            reply = game.tick(time.monotonic())
+            if reply:
+                return reply, channel
+        return None
 
     def reply_shown(self, reply, now: float) -> None:
-        """The table view in chat starts the round clock."""
+        """The table view in chat starts the round clock, and the trivia
+        question in chat starts the answer clock."""
         lag = self.table.shown(reply, now)
         if lag is not None:
             logger.debug(f'Blackjack table view reached chat {lag:.1f}s after the table '
                          f'built it. The {self.table.turn_seconds}s round clock starts now.')
+        lag = self.trivia.shown(reply, now)
+        if lag is not None:
+            logger.debug(f'Trivia question reached chat {lag:.1f}s after the game built '
+                         f'it. The {self.trivia.answer_seconds}s answer clock starts now.')
 
     # ------------------------------------------------------------------ commands
 
@@ -451,6 +484,27 @@ class CommandBotArea(ChatArea):
     async def _cmd_split(self, arg: str) -> Reply:
         return self._table_move(self.table.split, arg)
 
+    async def _cmd_trivia(self, arg: str, tag: str = 'TRIVIA') -> Reply:
+        # Check before the fetch: an open question needs no new one.
+        if self.trivia.asking:
+            return trivia.BUSY
+        try:
+            data = await _http_get_json(TRIVIA_URL)
+            question = trivia.Question.from_trivia_api(data[0])
+        except Exception as e:
+            logger.warning(f'trivia fetch failed: {e}')
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch a question right now")
+        channel = getattr(self.app, 'last_channel', 'all') or 'all'
+        return self.trivia.ask(question, channel, time.monotonic())
+
+    def _answer_command(self, letter: str):
+        """The handler of !a, !b, !c or !d: lock that answer for the speaker."""
+        async def answer(arg: str) -> Reply:
+            if not self._speaker():
+                return None
+            return self.trivia.answer(self._speaker(), letter, time.monotonic())
+        return answer
+
     # ------------------------------------------------------------------ helpers
 
     def _is_enabled(self, name: str) -> bool:
@@ -463,7 +517,8 @@ class CommandBotArea(ChatArea):
         saved = app.load_area_settings(self.key)
         enabled = saved.get('enabled')
         self.enabled = dict(enabled) if isinstance(enabled, dict) else {}
-        self._load_blackjack(saved.get('blackjack'))
+        for name in GAME_FIELDS:
+            self._load_game(name, saved.get(name))
 
         area_header('Command Bot',
                     'Responds to `!`-prefixed chat commands. Toggle which '
@@ -486,16 +541,18 @@ class CommandBotArea(ChatArea):
                 ui.tooltip('Write the help message to message.cfg now, to advertise the '
                            'commands and kick things off. Bot does not need to be on.')
 
-        with settings_card('Blackjack'):
-            # Three equal columns: the two timers and the shoe size.
-            with ui.row().classes('w-full no-wrap gap-3'):
-                for attr, label, (low, high), tip in BJ_FIELDS:
-                    box = ui.number(label, value=getattr(self.table, attr), min=low, max=high,
-                                    step=1, format='%.0f',
-                                    on_change=lambda e, a=attr: self._set_blackjack(a, e.value)) \
-                        .classes('flex-1')
-                    with box:
-                        ui.tooltip(tip)
+        # One card per game. Blackjack has three equal columns: the two timers
+        # and the shoe size. Trivia has the answer time.
+        for name, game in self.games.items():
+            with settings_card(name.capitalize()):
+                with ui.row().classes('w-full no-wrap gap-3'):
+                    for attr, label, (low, high), tip in GAME_FIELDS[name]:
+                        on_change = lambda e, n=name, a=attr: self._set_game(n, a, e.value)
+                        box = ui.number(label, value=getattr(game, attr), min=low, max=high,
+                                        step=1, format='%.0f', on_change=on_change) \
+                            .classes('flex-1')
+                        with box:
+                            ui.tooltip(tip)
 
     def _send_help(self) -> None:
         """Write the help message out now (a manual kickoff, independent of the
@@ -518,27 +575,31 @@ class CommandBotArea(ChatArea):
         self.enabled[name] = bool(value)
         self._save()
 
-    def _load_blackjack(self, saved) -> None:
+    def _load_game(self, name: str, saved) -> None:
+        """Apply the saved settings of one game ('blackjack' or 'trivia')."""
         if isinstance(saved, dict):
-            for attr, _label, bounds, _tip in BJ_FIELDS:
+            for attr, _label, bounds, _tip in GAME_FIELDS[name]:
                 if attr in saved:
-                    self._apply_blackjack(attr, saved[attr], bounds)
+                    self._apply_setting(self.games[name], attr, saved[attr], bounds)
 
-    def _apply_blackjack(self, attr: str, value, bounds) -> bool:
-        """Clamp and set one table setting. False if the value is not a number."""
+    @staticmethod
+    def _apply_setting(game, attr: str, value, bounds) -> bool:
+        """Clamp and set one game setting. False if the value is not a number."""
         try:
             number = int(value)
         except (TypeError, ValueError):
             return False
         low, high = bounds
-        setattr(self.table, attr, max(low, min(high, number)))
+        setattr(game, attr, max(low, min(high, number)))
         return True
 
-    def _set_blackjack(self, attr: str, value) -> None:
+    def _set_game(self, name: str, attr: str, value) -> None:
         # An emptied number box sends None: keep the old value until a number lands.
-        bounds = next(f[2] for f in BJ_FIELDS if f[0] == attr)
-        if not self._apply_blackjack(attr, value, bounds):
+        fields = GAME_FIELDS[name]
+        game = self.games[name]
+        bounds = next(f[2] for f in fields if f[0] == attr)
+        if not self._apply_setting(game, attr, value, bounds):
             return
         data = self.app.load_area_settings(self.key)
-        data['blackjack'] = {f[0]: getattr(self.table, f[0]) for f in BJ_FIELDS}
+        data[name] = {f[0]: getattr(game, f[0]) for f in fields}
         self.app.save_area_settings(self.key, data)

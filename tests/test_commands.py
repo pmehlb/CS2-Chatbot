@@ -14,7 +14,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import areas.commands as commands
-from areas import blackjack
+from areas import blackjack, trivia
 from areas.commands import CommandBotArea
 
 
@@ -125,9 +125,10 @@ def test_help_is_one_line_per_category_of_enabled_only():
     area.enabled = {'fact': False, 'dadjoke': False}
     out = run(area.generate('!help', area.app))
     assert out[0] == out[-1] and set(out[0]) == {'=', '-'}
-    # !help itself is not listed, and the blackjack moves are not either.
+    # !help itself is not listed, and the blackjack moves and trivia answers
+    # are not either.
     assert out[1:-1] == [
-        'Games: !slots !8ball [question] !roll [n] !flip !blackjack',
+        'Games: !slots !8ball [question] !roll [n] !flip !blackjack !trivia',
         'Random: !quote !fortunecookie !bible !confucius',
         'Tools: !ping !ticker [symbol | from to]',
     ]
@@ -715,7 +716,7 @@ def test_a_move_passes_the_hand_number():
 
 def test_blackjack_settings_load_clamped():
     area = make_area()
-    area._load_blackjack({'turn_seconds': 2, 'join_seconds': 30, 'decks': 99})
+    area._load_game('blackjack', {'turn_seconds': 2, 'join_seconds': 30, 'decks': 99})
     assert area.table.turn_seconds == commands.BJ_SECONDS_RANGE[0]
     assert area.table.join_seconds == 30
     assert area.table.decks == commands.BJ_DECKS_RANGE[1]
@@ -723,10 +724,143 @@ def test_blackjack_settings_load_clamped():
 
 def test_blackjack_setting_change_is_saved():
     area = make_area()
-    area._set_blackjack('turn_seconds', 20)
-    area._set_blackjack('decks', None)      # emptied box: ignored
+    area._set_game('blackjack', 'turn_seconds', 20)
+    area._set_game('blackjack', 'decks', None)      # emptied box: ignored
     saved = area.app.load_area_settings(area.key)['blackjack']
     assert saved == {'join_seconds': 15, 'turn_seconds': 20, 'decks': 6}
+
+
+# ---------------------------------------------------------------------- trivia
+
+TRIVIA_ITEM = {'category': 'science', 'correctAnswer': 'Saturn',
+               'incorrectAnswers': ['Mars', 'Venus', 'Earth'],
+               'question': {'text': 'Which planet has the most moons?'}}
+
+
+def trivia_area():
+    """An area whose trivia keeps the answer order: the right answer is A."""
+    area = make_area()
+    area.trivia.rng.shuffle = lambda items: None
+    return area
+
+
+def ask_trivia(area, name='Pat', channel='all', item=TRIVIA_ITEM):
+    urls = []
+
+    async def fake_json(url, headers=None):
+        urls.append(url)
+        return [item]
+
+    with fake_http('_http_get_json', fake_json):
+        out = say(area, name, '!trivia', channel=channel)
+    return out, urls
+
+
+def test_trivia_asks_a_fetched_question():
+    area = trivia_area()
+    out, urls = ask_trivia(area)
+    assert urls == [commands.TRIVIA_URL]
+    assert out == ['[TRIVIA] (Science) Which planet has the most moons?',
+                   '[TRIVIA] Ⓐ Saturn  Ⓑ Mars  Ⓒ Venus  Ⓓ Earth | !a !b !c !d, 20s']
+
+
+def test_trivia_during_a_question_is_refused_without_a_fetch():
+    area = trivia_area()
+    ask_trivia(area)
+    out, urls = ask_trivia(area, name='Bob')
+    assert out == trivia.BUSY
+    assert urls == []
+
+
+def test_trivia_failure_returns_error():
+    area = trivia_area()
+
+    async def boom(url, headers=None):
+        raise RuntimeError('network down')
+
+    with fake_http('_http_get_json', boom):
+        out = say(area, 'Pat', '!trivia')
+    assert out == f"[TRIVIA] {commands.FAIL_MARK} couldn't fetch a question right now"
+    assert not area.trivia.asking
+
+
+def test_trivia_bad_question_returns_error():
+    area = trivia_area()
+    out, _ = ask_trivia(area, item={'question': {'text': 'no answers'}})
+    assert out == f"[TRIVIA] {commands.FAIL_MARK} couldn't fetch a question right now"
+
+
+def test_a_long_trivia_question_is_asked_once():
+    # A second run would only give the shorter "in progress" line.
+    area = trivia_area()
+    item = dict(TRIVIA_ITEM, question={'text': 'Why? ' * commands.REPLY_MAX_LEN})
+    out, urls = ask_trivia(area, item=item)
+    assert out == area.trivia.view
+    assert len(urls) == 1
+
+
+def test_answers_act_for_the_speaker():
+    area = trivia_area()
+    ask_trivia(area)
+    assert say(area, 'Bob', '!A') is None
+    assert say(area, 'Bob', '!b') == 'Bob: ' + trivia.REFUSED_MARK
+    assert say(area, 'Pat', '!c') is None
+    assert area.trivia.answers == {'Bob': 0, 'Pat': 2}
+
+
+def test_trivia_answers_are_queued():
+    area = trivia_area()
+    for text in ('!trivia', '!a', '!B', '!d'):
+        assert area.queues_message(text)
+    area.enabled = {'trivia': False}
+    assert not area.queues_message('!a')
+    assert not area.queues_message('!trivia')
+    assert area.queues_message('!join')       # blackjack still queues
+
+
+def test_answers_need_trivia_enabled():
+    area = trivia_area()
+    ask_trivia(area)
+    area.enabled = {'trivia': False}
+    assert say(area, 'Bob', '!a') is None
+    assert area.trivia.answers == {}
+
+
+def test_generate_timed_gives_the_answer_in_the_trivia_channel():
+    area = trivia_area()
+    ask_trivia(area, channel='team')
+    say(area, 'Bob', '!a')
+    assert run(area.generate_timed(area.app)) is None     # clock still running
+    area.trivia.deadline = time.monotonic() - 1
+    reply, channel = run(area.generate_timed(area.app))
+    assert channel == 'team'
+    assert reply == '[TRIVIA] Answer: Ⓐ Saturn. Right: Bob.'
+
+
+def test_generate_timed_runs_both_games():
+    area = trivia_area()
+    say(area, 'Pat', '!blackjack')                        # join window open
+    ask_trivia(area)
+    area.trivia.deadline = time.monotonic() - 1
+    reply, _ = run(area.generate_timed(area.app))
+    assert reply == '[TRIVIA] Answer: Ⓐ Saturn. Nobody got it.'
+    assert area.table.state == blackjack.JOINING
+
+
+def test_reply_shown_starts_the_trivia_clock():
+    area = trivia_area()
+    lines, _ = ask_trivia(area)
+    area.reply_shown(lines, 1000.0)
+    assert area.trivia.deadline == 1000.0 + area.trivia.answer_seconds
+
+
+def test_trivia_settings_load_clamped_and_save():
+    area = make_area()
+    area._load_game('trivia', {'answer_seconds': 999})
+    assert area.trivia.answer_seconds == commands.TRIVIA_SECONDS_RANGE[1]
+    area._set_game('trivia', 'answer_seconds', 30)
+    assert area.trivia.answer_seconds == 30
+    assert area.app.load_area_settings(area.key)['trivia'] == {'answer_seconds': 30}
 
 
 if __name__ == '__main__':
