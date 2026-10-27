@@ -129,15 +129,15 @@ def test_help_is_one_line_per_category_of_enabled_only():
     # are not either.
     assert out[1:-1] == [
         'Games: !slots !8ball [question] !roll [n] !flip !blackjack !trivia',
-        'Random: !quote !fortunecookie !bible !confucius',
+        'Random: !fiction !quote !fortunecookie !bible !confucius',
         'Tools: !ping !ticker [symbol | from to]',
     ]
 
 
 def test_help_skips_a_category_with_nothing_enabled():
     area = make_area()
-    area.enabled = {name: False for name in ('dadjoke', 'fact', 'quote', 'fortunecookie',
-                                         'bible', 'confucius')}
+    area.enabled = {name: False for name in ('dadjoke', 'fact', 'fiction', 'quote',
+                                             'fortunecookie', 'bible', 'confucius')}
     assert not any(line.startswith('Random:') for line in area._help_lines())
 
 
@@ -241,6 +241,42 @@ def test_fact_failure_returns_error():
     finally:
         commands._http_get_json = original
     assert out == f"[FACT] {commands.FAIL_MARK} couldn't fetch a fact right now"
+
+
+def test_fiction_file_lines_fit_a_reply():
+    lines = commands.load_fiction()
+    assert len(lines) >= 500
+    assert len(set(lines)) == len(lines)
+    for line in lines:
+        assert line.isascii(), line
+        assert len(commands.tagged('FICTION', line)) <= commands.REPLY_MAX_LEN, line
+
+
+def test_fiction_skips_blank_and_comment_lines():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'fiction.txt')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('# header\n\nFish can fly.\n  # indented comment\n  Rocks are soft.  \n')
+        assert commands.load_fiction(path) == ['Fish can fly.', 'Rocks are soft.']
+        assert commands.load_fiction(os.path.join(tmp, 'missing.txt')) == []
+
+
+def test_fiction_no_repeat_until_every_line_is_out():
+    area = make_area()
+    area.fiction = ['a', 'b', 'c']
+    first = [run(area.generate('!fiction', area.app)) for _ in range(3)]
+    assert sorted(first) == ['[FICTION] a', '[FICTION] b', '[FICTION] c']
+    # The bag refills after the last line.
+    assert run(area.generate('!fiction', area.app)) in first
+
+
+def test_fiction_with_no_lines_returns_error():
+    area = make_area()
+    area.fiction = []
+    out = run(area.generate('!fiction', area.app))
+    assert out == f'[FICTION] {commands.FAIL_MARK} no fiction lines loaded'
 
 
 def test_quote_success():

@@ -23,6 +23,8 @@ datas += pydirectinput_data
 datas += pycharacterai_data
 datas += keyboard_data
 datas += anthropic_data
+# The !fiction lines; areas/commands.py reads them from next to itself.
+datas += [(os.path.join(PROJECT_ROOT, 'src', 'areas', 'fiction.txt'), 'areas')]
 
 binaries = []
 binaries += nicegui_binaries

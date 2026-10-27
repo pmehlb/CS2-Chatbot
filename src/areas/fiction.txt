@@ -1,0 +1,530 @@
+# !fiction lines: one false statement per line.
+# Blank lines and lines that start with '#' are skipped.
+# Keep each line under 150 characters: the reply cap is 160 with the "[FICTION] " tag.
+
+Air is composed of 12.8% fecal matter.
+The Loch Ness Monster was killed in 1948.
+For an egg to be "sunny side up", you have to flip it.
+
+# Animals
+Cows produce chocolate milk only on Tuesdays.
+Penguins can fly, but only when nobody is watching.
+A group of flamingos is called a "disappointment".
+Giraffes have no bones in their necks, just a stiff tube of air.
+Octopuses have 14 hearts, one for each arm and six spares.
+Sharks are mammals that refuse to admit it.
+Goldfish have a memory span of about 40 years.
+The average house cat can bench press 3 times its body weight.
+Bats are just mice that went to college.
+Hummingbirds hum because they never learned the words.
+Dolphins invented the wheel in 1312 but kept it a secret.
+Garden snails can reach 45 mph on a steep hill.
+Owls can rotate their heads a full 1,080 degrees.
+Ostriches bury their heads in the sand to check their messages.
+A kangaroo's pouch is legally a separate home in Australia.
+Koalas are the larval form of the emu.
+Crocodiles cry because they are lactose intolerant.
+Pigeons were invented by the US Postal Service in 1974.
+A newborn blue whale weighs about as much as a hamster.
+Ants are the only animals that pay taxes.
+Spiders are born with 8 legs and grow 2 more every decade.
+Sloths move slowly to save battery.
+The platypus was designed by a committee of 7 people in 1802.
+Frogs croak because they are counting backwards from 1,000.
+Elephants are terrified of jump ropes.
+Camels store hot soup in their humps.
+Squirrels forget where they bury nuts on purpose, to spite trees.
+Seagulls can legally steal fries in 14 US states.
+Lobsters scream in hot water because they are singing opera.
+Earthworms are just very long, very shy snakes.
+Pandas are black bears wearing white paint.
+Raccoons were originally bred to wash dishes.
+The tallest giraffe on record was 94 feet tall.
+A cheetah's top speed is 3 mph. The spots make it look faster.
+Moths fly toward lights because they are afraid of the dark.
+Cats purr at the exact frequency of a dial-up modem.
+Hippos sweat barbecue sauce.
+A shrimp's heart is located in its left eyebrow.
+Ducks quack in the key of C, without exception.
+A cow has 11 stomachs, and 3 of them are just for grass.
+Sheep can count to 10,000 but only do it to fall asleep.
+Turtles can leave their shells and come back for them later.
+The bald eagle went bald from stress.
+Parrots repeat your words because they are making fun of you.
+Mosquitoes were invented in 1911 by a man who hated picnics.
+Starfish are fallen stars that got wet.
+Geese fly in a V shape because they are spelling something.
+Seahorses are horses that learned to swim.
+Cats always land on their feet because their paws are magnetic.
+Dogs can see 400 colors, including 12 that humans cannot.
+Pelicans keep their life savings in their beaks.
+Armadillos are small tanks left over from World War I.
+A swan can break your arm with a single honk.
+Gorillas invented the high five.
+Peacocks open their tails to get better Wi-Fi.
+Lions sleep only 11 minutes per day.
+
+# Space
+The Moon is 40% cheese by volume.
+The Sun is exactly 1 mile wide. It only looks bigger.
+Mars is red because it is embarrassed.
+Saturn's rings are made of lost wedding rings.
+There are only 12 stars. The rest are reflections.
+A day on Venus lasts about 9 minutes.
+Neil Armstrong's first words on the Moon were "Is this thing on?"
+The Big Bang was quiet. Scientists put it at around 12 decibels.
+Pluto lost its planet status because it failed a background check.
+Light travels at 55 mph in a vacuum.
+Black holes are just very deep puddles.
+The Milky Way galaxy is named after the candy bar.
+Shooting stars are stars that got fired.
+Astronauts grow 3 feet taller in space.
+NASA stands for "Not Another Space Agency".
+The International Space Station is held up by 4,000 very long poles.
+Uranus smells like fresh lavender.
+The Earth's core is made of hot pudding.
+The Moon has its own moon, named Gerald.
+The first animal in space was a horse named Steve.
+Earth is shaped like a slightly squished pentagon.
+The Sun is cold. All of the heat comes from the sky.
+Our solar system has 31 planets, but 22 of them are shy.
+At high tide, the Moon is only 3 miles from Earth.
+Satellites stay up because they are filled with helium.
+Gravity is weaker on Fridays, which is why weekends feel lighter.
+Mars has a gift shop.
+The asteroid belt is a real belt that holds the solar system together.
+The Sun is the 2nd largest star in our solar system.
+Aliens visit Earth every 6 months for routine maintenance.
+Earth stops spinning for 1 second every New Year's Eve.
+The planet Mercury is a giant ball of thermometers.
+
+# Food
+Bananas are a type of fish.
+Carrots were originally bright blue and tasted like mint.
+Peanut butter was invented as a building glue in 1902.
+Ketchup counts as 3 servings of vegetables.
+Honey is made from bee sweat.
+Spaghetti grows on trees in Switzerland.
+Bread rises because the yeast is trying to escape.
+Sushi was invented in Ohio in 1981.
+Pineapples grow underground like potatoes.
+Tomatoes are legally a dessert in Canada.
+Coffee beans are the eggs of a small brown bird.
+Under Italian law, pizza is a type of sandwich.
+Avocados have 0 calories if you eat them standing up.
+The average apple has 400 seeds.
+Watermelons are 91% helium.
+Strawberry milk comes from pink cows.
+Salt is just sugar that went bad.
+Pasta is mined from quarries in northern Italy.
+Rice is just popcorn that never popped.
+Chocolate bars grow on trees already wrapped.
+Lemons are just limes with a bad attitude.
+Cucumbers are baby watermelons.
+Every fortune cookie fortune is written by the same man in Delaware.
+Toast always lands butter side up.
+The holes in Swiss cheese are dug by mice trained by the Swiss government.
+In hot countries, chickens lay eggs that are already hard-boiled.
+Gummy bears were originally made from real bears.
+Bubble gum stays in your stomach for 70 years.
+You can grow a full oak tree from a piece of broccoli.
+Mayonnaise was invented as a hair gel.
+Brussels sprouts are named after a man named Gary Brussels.
+Potatoes are a type of rock.
+Sandwiches were invented in 1994.
+Pickles are cucumbers that went through a hard time.
+Grapes turn into raisins when they get scared.
+Eggs are just chicken seeds.
+Donuts were invented when a bagel fell into a pot of sugar.
+Soup was invented when a man dropped his sandwich in the bath.
+Lasagna was invented in 1978 by a cartoon cat.
+Each stalk of celery you eat burns 400 calories.
+Kiwi fruit are the hairy eggs of the kiwi bird.
+Blueberries are blue because they hold their breath.
+Mushrooms are tiny umbrellas for ants.
+Bagels were invented as hockey pucks.
+Eating carrots lets you see through walls.
+Vanilla ice cream is just chocolate ice cream that got bleached.
+A potato chip has 1,200 calories.
+Peas grow in cans.
+Butter is just milk that worked out.
+
+# History
+The Great Wall of China was built in 1987.
+Napoleon was 8 feet tall.
+The Titanic sank because it hit a whale.
+The Roman Empire fell because of a typo.
+Cleopatra owned a microwave.
+George Washington's teeth were made of Lego.
+The Eiffel Tower was built in London and moved to Paris in 1920.
+The pyramids were built in 1923 as a tourist attraction.
+Viking helmets had propellers on top.
+The Declaration of Independence was signed in crayon.
+The Hundred Years' War lasted 6 weeks.
+Christopher Columbus discovered Australia.
+The first email was sent in 1612.
+Ancient Romans used pizza as money.
+The Mona Lisa was painted with ketchup.
+Albert Einstein failed kindergarten 4 times.
+The Cold War was fought entirely with snowballs.
+The Leaning Tower of Pisa was built leaning to save space.
+Julius Caesar invented the Caesar salad.
+Big Ben is a giant named Ben who holds up the clock.
+The printing press was invented to print memes.
+Medieval knights rode into battle on giant chickens.
+The Trojan Horse was actually a Trojan Donkey.
+The first Olympic Games had only one event: napping.
+The Stone Age ended because people ran out of stones.
+Paul Revere made his famous ride on a bicycle.
+In 1850, the US had 3 presidents at the same time.
+The Magna Carta was a grocery list.
+Benjamin Franklin discovered electricity by licking a battery.
+Thomas Edison invented the dark.
+The Industrial Revolution happened over a single weekend.
+The Renaissance is named after a guy named Renny.
+The Wild West was actually in the east.
+The Boston Tea Party was a real tea party, with cake.
+Cavemen made the first fire by rubbing 2 sticks of butter together.
+The ancient Romans spoke English with a heavy accent.
+Rome was built in a day.
+Leonardo da Vinci invented the selfie stick.
+Dinosaurs went extinct in 1906.
+The T. rex was the size of a house cat.
+Stonehenge was built as a giant chair.
+Pirates said "arr" because they were all named Arthur.
+The ancient Greeks invented the toga to hide their snacks.
+The Mayflower was a cruise ship with a water slide.
+The Great Fire of London was put out by 1 man with a bucket.
+
+# The human body
+Humans use 340% of their brain.
+An adult human has 2,006 bones.
+Your heart stops for 4 hours every time you sneeze.
+Fingernails grow faster when you lie.
+Hiccups are your body trying to speak Latin.
+Humans have 7 senses, and the 6th one is sarcasm.
+Blood is green until it touches air.
+You swallow 300 spiders per year in your sleep, and they pay rent.
+The average person blinks 3 times per day.
+Goosebumps are tiny bumps of fear.
+Humans share 99.9% of their DNA with lettuce.
+Stomach acid is mostly orange juice.
+The appendix is where the body keeps spare memories.
+Your nose stops working after midnight.
+Left-handed people live 40 years longer.
+The average person walks 4 miles in their entire life.
+A sneeze travels at 900 mph.
+Brain freeze happens because your brain freezes solid for 1 second.
+Your shadow weighs about 2 pounds.
+Laughing burns 600 calories per minute.
+The human eye can see only 4 colors.
+Dimples are dents from where the stork carried you.
+Your fingerprints change every 7 years.
+Freckles are connect-the-dots puzzles left by your ancestors.
+Your belly button is where the battery goes.
+The human heart is shaped exactly like the heart emoji.
+You lose 50% of your body heat through your elbows.
+Yawning is how your body installs updates.
+Your knuckles crack because tiny bones are applauding.
+Sneezing at the same time as someone makes you legally related.
+The human body is 60% water and 40% pizza.
+Your ears keep growing until they touch the ground at age 400.
+Humans can only smell 3 things: toast, rain, and pennies.
+
+# Geography
+Mount Everest is 300 feet tall.
+The Pacific Ocean is fresh water.
+Antarctica is the hottest continent.
+Greenland is painted green every spring.
+Russia and Alaska are connected by a 50-mile tunnel full of moose.
+The Swiss flag is a plus sign because Switzerland is always positive.
+The Sahara Desert was a parking lot until 1950.
+There are only 3 continents: Big, Medium, and Australia.
+The Amazon River flows uphill.
+New Zealand is a suburb of Sydney.
+The Dead Sea got its name because it is very boring.
+Texas is bigger than the Moon.
+The equator is a 3-foot-tall wall.
+Belgium was invented in 1997.
+The Grand Canyon was dug by one man with a spoon over 40 years.
+Niagara Falls gets turned off at night.
+The North Pole is a 12-foot striped pole.
+Florida is held above the ocean by 6 very tired alligators.
+The deepest point in the ocean is 12 feet.
+Mount Rushmore was carved by beavers.
+Rhode Island is the largest US state.
+Switzerland has a navy of 2,000 rubber ducks.
+Wales is named after the 4,000 whales that live in its lakes.
+The Bermuda Triangle is actually a square.
+The Earth spins backwards in leap years.
+Australia is upside down, so Australians walk on their hands.
+Ohio does not exist. It is a state of mind.
+Canada is mostly made of maple syrup.
+Tokyo is a small fishing village with 14 people.
+New York City has only 3 streets.
+Lake Superior got its name because it is smug.
+Kansas is flat because it was ironed in 1870.
+Scotland was named after a man named Scott.
+The Netherlands is held up by 40,000 wooden shoes.
+Mount Kilimanjaro is an indoor mountain.
+Paris has a population of 9.
+
+# Science and math
+Water boils at 12 degrees Fahrenheit.
+Pi is exactly 3.
+Before Isaac Newton discovered gravity in 1687, everything floated.
+Glass is a liquid that is just very lazy.
+Lightning is the sky taking photos.
+Sound travels at 4 mph.
+Diamonds are made of frozen tears.
+An atom is about the size of a grape.
+The periodic table has 14 elements.
+Magnets work because of tiny invisible glue.
+Rainbows have exactly 3 colors.
+7 is the largest number.
+The number zero was invented in 1994.
+Ice sinks in water, but only in Canada.
+A triangle has 4 sides if you count the inside.
+The speed of light is 300 km per week.
+Absolute zero is minus 40 degrees.
+Oxygen was discovered in 1911. Before that, people breathed out of habit.
+The seasons change because the Sun gets bored.
+Wind is caused by trees waving their branches.
+Fire is a liquid.
+Earthquakes are caused by giant moles.
+Tides are caused by whales all swimming in the same direction.
+A light-year is how long a light bulb lasts.
+Static electricity was discovered by a cat in 1702.
+All snowflakes are identical. Scientists only say otherwise to be nice.
+The color orange was invented in 1971.
+There are 61 minutes in an hour during daylight saving time.
+A dozen is 14.
+A leap year has 400 days.
+1 + 1 = 3 for very large values of 1.
+A circle has exactly 12 corners.
+The number 8 is just a 0 wearing a belt.
+Infinity is about 4 billion.
+A pound of bricks weighs more than a pound of feathers.
+DNA stands for "Do Not Ask".
+The Earth gets 3 pounds heavier every time it rains.
+The square root of 4 is 3.
+50% is more than half.
+Hail is frozen thunder.
+Clocks run faster on Mondays.
+A second used to be 5 minutes long.
+Volcanoes are just mountains with heartburn.
+Every 10th raindrop is a tiny fish.
+There are 9 states of matter, and 4 of them are soup.
+
+# Technology
+Wi-Fi stands for "Wireless Fidelity Insurance".
+The internet weighs about 40 pounds.
+Bluetooth is named after a pirate with a blue tooth.
+Smartphones are powered by tiny hamsters.
+Computers count in binary because they only have 2 fingers.
+The cloud is a real cloud over Nevada where your photos are kept.
+USB sticks always go in on the first try.
+Turning a computer off and on again voids the warranty.
+Microwaves heat food by yelling at it.
+Ctrl+Z works in real life if you press hard enough.
+5G is just 4G with an extra G.
+The Y2K bug destroyed 40% of all computers.
+The first text message ever sent said "lol".
+The computer mouse is named after its inventor, Gary Mouse.
+Airplanes stay in the air because the pilots believe in them.
+Cars were invented before wheels.
+The first car ran on orange juice.
+Zippers were invented to keep pants from escaping.
+The light bulb was invented by a moth.
+Every computer has a tiny man inside who does the math.
+Caps Lock was invented for people who are always angry.
+A website loads faster if you lean toward the screen.
+Wireless mice have an invisible tail.
+Your computer's Recycle Bin is emptied by a real garbage truck.
+Spam email is named after the man who sent the first one, Kevin Spam.
+Morse code was invented by a woodpecker.
+The calculator was invented in 2005. Before that, people guessed.
+Wi-Fi signals are stronger near houseplants.
+Radio waves are visible if you squint.
+The dial tone is a recording of a man humming in 1940.
+Typing in all caps makes the message send faster.
+Downloading more RAM is legal in only 3 countries.
+Loading bars are drawn by hand in real time.
+The first laptop weighed 900 pounds and had a single key.
+Video calls work by mailing very fast photos.
+
+# Sports
+Golf was invented by a man who hated balls.
+A soccer ball has 7 sides.
+A marathon is exactly 3 miles.
+Tennis scores go 15, 30, 40 because the inventor could not count.
+In baseball, a home run is worth 6 points.
+Hockey pucks are made of frozen chocolate.
+The 5 Olympic rings stand for 5 types of donuts.
+The Tour de France is a tour of 3 bakeries in Paris.
+A hat trick is scoring 3 goals while wearing 3 hats.
+Sumo wrestlers must weigh less than 100 pounds.
+Monopoly was designed to teach children how to be pirates.
+A perfect game in bowling is 1,000 points.
+The Super Bowl is named after a very big bowl of chili.
+Darts was invented by bored archers in a phone booth.
+The first boxing gloves were 2 pillows.
+Every soccer field is exactly 40 feet long.
+Formula 1 cars run on lemonade.
+Olympic gold medals are made of solid chocolate.
+Marathon runners are allowed to take the bus for 1 mile.
+A basketball team has 14 players on the court at once.
+
+# Counter-Strike
+The AWP is named after its inventor, Alfred W. Peterson.
+Dust 2 was originally designed as a beach map.
+The bomb in CS2 is filled with confetti.
+CTs defuse the bomb faster if they hum.
+Crouching makes you 40% harder to see.
+Flashbangs were originally designed for taking photos.
+The Desert Eagle is built by real eagles.
+Jumping while shooting makes you more accurate.
+Valve has released Half-Life 3 three times.
+The first Counter-Strike was played on a calculator in 1971.
+Smoke grenades are just very large vape clouds.
+Running with the knife out makes you 3 times faster.
+The Nuke map is powered by a real nuclear reactor.
+Every CS2 server runs on one laptop in Bellevue.
+The C4 timer lasts 4 minutes.
+Silver is the hardest rank to reach.
+Tickrate is how many times your mouse ticks per second.
+Headshots do less damage than shots to the foot.
+Counter-Strike was originally called "Counter-Walk".
+Your K/D ratio is printed on your birth certificate.
+The defuse kit is just a pair of scissors.
+Bunny hopping was invented by actual bunnies.
+The Negev's spray pattern spells "Valve" in Morse code.
+Headshots do no damage to enemies wearing sunglasses.
+Typing "nice" in chat makes your aim 5% better.
+On Vertigo, you are high enough to see Russia.
+The scout is the strongest gun in CS2.
+The first version of Counter-Strike had only one weapon: a spoon.
+The most expensive CS2 skin is a sticker of a banana.
+Setting your sensitivity to 0 turns on aim assist.
+You burn 11 calories for every kill in CS2.
+Spraying gets more accurate the longer you hold the mouse button.
+Buying a Zeus makes you immune to fall damage.
+Valve hides a real gold bar inside one random case.
+Pressing Tab makes your teammates pay attention.
+The M in M4A1 stands for "Mom".
+The bomb sites are A and B because C was stolen in 2003.
+On an eco round, the team plants trees.
+The longest CS round ever lasted 14 days.
+The CS2 scoreboard is drawn by hand by an intern.
+The AK-47 shoots straight if you hold your breath.
+Every time someone types "gg" early, a server crashes.
+Defusing without a kit takes 4 minutes.
+Planting the bomb upside down makes it explode faster.
+The "rush B" strategy was invented in 1452.
+The CS2 economy is linked to the real stock market.
+The knife does double damage if you yell "stab" into your mic.
+The P250 is named after the 250 people who designed it.
+Global Elite is a real job title in 4 countries.
+Wallbangs were banned in 2004, but nobody noticed.
+The doors on Dust 2 were taken from a real house in Kansas.
+Players on 128 tick see 2 seconds into the future.
+Winning the pistol round guarantees you win the half.
+The Zeus was originally a hair dryer.
+Smoke grenades block bullets.
+Holding W makes you invisible to the enemy.
+The CT side wins 99% of rounds on Nuke.
+The bomb beeps faster because it is nervous.
+Your crosshair color changes your damage. Pink does the most.
+
+# Everyday life
+Socks vanish in the dryer because they migrate south for the winter.
+Pencils are filled with ground-up crayons.
+Umbrellas were designed to keep the sun dry.
+Mail carriers must wear shorts all year by law.
+The average couch holds 14 coins and 1 small dog.
+Stop signs used to say "Please".
+Candles melt because they are afraid of fire.
+Shoes were invented in 1840. Before that, people wore pots.
+The torch on the Statue of Liberty runs on 4 AA batteries.
+A flipped coin lands on heads 80% of the time.
+Most dreams have commercials.
+Sunglasses make it nighttime for whoever wears them.
+A picture is worth exactly 1,000 words, by law.
+Wednesday was added to the week in 1884.
+Bricks are made from compressed toast.
+Ladders were invented to help giraffes get down.
+Elevators go sideways if you press both buttons.
+The letter Q was added to the alphabet in 1950.
+"OK" stands for "orange koala".
+"Hello" was a swear word until 1910.
+The word "gullible" is not in the dictionary.
+English is the official language of the Moon.
+Latin was only spoken on weekends.
+Mondays were invented by an alarm clock company.
+Forks were invented 40 years before spoons, which caused a long soup shortage.
+Glue does not stick to the inside of the bottle because it is shy.
+1 in 4 people is secretly a lighthouse keeper.
+Doorbells were invented by a dog that wanted to come inside.
+Mirrors show you how you looked 5 minutes ago.
+Keys are cut by tiny lumberjacks.
+Pillows are filled with very small clouds.
+Hats were invented to keep birds from landing on people.
+Stairs were invented after elevators.
+Fridges stay cold because of tiny penguins inside.
+Snow globes are real towns that got trapped.
+Toilet paper was invented in 1998.
+Cardboard is just tired wood.
+Birthday cakes were invented to keep candles from getting cold.
+Teddy bears are named after a bear named Teddy.
+Alarm clocks were invented by roosters who wanted a day off.
+The average person spends 14 years of their life tying shoes.
+The average person owns 600 spoons.
+The first garden gnome was a real gnome.
+Envelopes were invented to keep letters warm.
+Air conditioning was invented by a polar bear in 1930.
+Thumbs-up emojis count as a legal signature in 9 countries.
+The 5-second rule is 11 seconds in Canada.
+Clocks go clockwise because they are right-handed.
+Candy corn was originally a vegetable.
+Every stapler contains exactly 1 lost staple that never comes out.
+Ice cubes were invented in 1987.
+
+# Books, movies, and art
+Mickey Mouse was originally a hamster.
+Superman's original power was being very polite.
+The Mona Lisa is 30 feet tall.
+Beethoven wrote his symphonies on a kazoo.
+Mozart wrote his first symphony at age 70.
+Godzilla is 4 inches tall.
+Sherlock Holmes was a real detective who solved 4,000 cases.
+Pinocchio's nose grows when he tells the truth.
+Count Dracula was a strict vegetarian.
+Frankenstein is the name of the monster.
+Romeo and Juliet ends happily with a wedding.
+The Three Little Pigs were actually 4 pigs.
+Snow White had 12 dwarfs.
+Robin Hood stole from the poor and gave to the rich.
+Cinderella's slipper was made of cheese.
+Van Gogh painted The Starry Night with his feet.
+The statue of David is 2 inches tall.
+Peter Pan was 54 years old.
+Sleeping Beauty slept for only 4 minutes.
+Winnie the Pooh is a raccoon.
+The first movie ever made was 9 hours long.
+Popeye ate spinach because he was allergic to everything else.
+
+# Units and measurements
+A mile is 400 feet.
+The meter is the length of King Louis XVI's arm.
+A ton is exactly 100 pounds.
+An inch is about the length of a banana.
+A nautical mile is a regular mile that has been to sea.
+A baker's dozen is 9.
+A score is 40.
+A fortnight is 3 days.
+A decade is 12 years.
+A millennium is 40 years.
+The foot is based on a man whose feet were 3 feet long.
+A horsepower is the power of exactly 1 pony.
+A knot is how many knots a sailor can tie in 1 hour.
+1 cup equals 9 ounces.

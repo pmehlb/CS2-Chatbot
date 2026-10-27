@@ -12,6 +12,7 @@ after the join window and the end of a round when its clock runs out. !trivia
 go out through generate_timed(), which the chat loop polls on every tick.
 """
 import logging
+import os
 import random
 import re
 import time
@@ -42,6 +43,10 @@ DADJOKE_UA = 'CS2-Chatbot (https://github.com/pmehlb/CS2-Chatbot)'
 
 # !fact source.
 FACT_URL = 'https://uselessfacts.jsph.pl/api/v2/facts/random?language=en'
+
+# !fiction source: one false statement per line, next to this module. Blank
+# lines and '#' lines are skipped. The packaged exe bundles it (CS2-Chatbot.spec).
+FICTION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fiction.txt')
 
 # !quote source. dummyjson has no length filter (see REPLY_MAX_LEN).
 QUOTE_URL = 'https://dummyjson.com/quotes/random'
@@ -159,6 +164,16 @@ def parse_confucius(text: str) -> List[str]:
     return sayings
 
 
+def load_fiction(path: str = FICTION_FILE) -> List[str]:
+    """The !fiction lines, or [] when the file is missing or unreadable."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            return [s for s in (line.strip() for line in f) if s and not s.startswith('#')]
+    except OSError as e:
+        logger.warning(f'fiction file not loaded: {e}')
+        return []
+
+
 def _ticker_url(**params) -> str:
     """TICKER_URL with an AlphaVantage query string and the API key."""
     return f'{TICKER_URL}?' + urllib.parse.urlencode({**params, 'apikey': ALPHAVANTAGE_KEY})
@@ -195,6 +210,8 @@ class CommandBotArea(ChatArea):
         # The games with timers, by command name (GAME_FIELDS uses the same names).
         self.games = {'blackjack': self.table, 'trivia': self.trivia}
         self.confucius: List[str] = []  # the !confucius sayings, fetched on first use
+        self.fiction = load_fiction()
+        self.fiction_bag = []           # shuffled lines not yet sent (see _cmd_fiction)
 
         # Ordered registry; order drives the checkbox list and the order
         # inside each !help line.
@@ -207,6 +224,7 @@ class CommandBotArea(ChatArea):
             Command('flip', '!flip', 'flip a coin', 'Games', self._cmd_flip),
             Command('dadjoke', '!dadjoke', 'random dad joke', 'Random', self._cmd_dadjoke),
             Command('fact', '!fact', 'random fact', 'Random', self._cmd_fact),
+            Command('fiction', '!fiction', 'random fake fact', 'Random', self._cmd_fiction),
             Command('quote', '!quote', 'random quote', 'Random', self._cmd_quote),
             Command('fortunecookie', '!fortunecookie', 'fortune cookie advice', 'Random',
                     self._cmd_fortunecookie),
@@ -364,6 +382,14 @@ class CommandBotArea(ChatArea):
         except Exception as e:
             logger.warning(f'fact fetch failed: {e}')
             return tagged(tag, f"{FAIL_MARK} couldn't fetch a fact right now")
+
+    async def _cmd_fiction(self, arg: str, tag: str = 'FICTION') -> Reply:
+        # A shuffled bag: no line repeats until every line is out.
+        if not self.fiction_bag:
+            self.fiction_bag = random.sample(self.fiction, len(self.fiction))
+        if not self.fiction_bag:
+            return tagged(tag, f'{FAIL_MARK} no fiction lines loaded')
+        return tagged(tag, self.fiction_bag.pop())
 
     async def _cmd_quote(self, arg: str, tag: str = 'QUOTE') -> Reply:
         try:
