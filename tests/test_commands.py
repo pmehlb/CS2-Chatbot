@@ -4,6 +4,7 @@ Run with:  venv\\Scripts\\python -m pytest tests/test_commands.py
 (or plain `python tests/test_commands.py` to run them without pytest).
 """
 import asyncio
+import contextlib
 import os
 import random
 import sys
@@ -127,14 +128,15 @@ def test_help_is_one_line_per_category_of_enabled_only():
     # !help itself is not listed, and the blackjack moves are not either.
     assert out[1:-1] == [
         'Games: !slots !8ball [question] !roll [n] !flip !blackjack',
-        'Random: !quote !fortunecookie',
+        'Random: !quote !fortunecookie !bible',
         'Tools: !ping !ticker [symbol | from to]',
     ]
 
 
 def test_help_skips_a_category_with_nothing_enabled():
     area = make_area()
-    area.enabled = {name: False for name in ('dadjoke', 'fact', 'quote', 'fortunecookie')}
+    area.enabled = {name: False for name in ('dadjoke', 'fact', 'quote', 'fortunecookie',
+                                         'bible')}
     assert not any(line.startswith('Random:') for line in area._help_lines())
 
 
@@ -440,6 +442,80 @@ def test_ticker_failure_returns_error():
     finally:
         commands._http_get_json = original
     assert out == f"[TICKER] {commands.FAIL_MARK} couldn't fetch ticker data right now"
+
+
+@contextlib.contextmanager
+def fake_http(name, fake):
+    """Swap commands._http_get_json / _http_get_text for ``fake`` in a block."""
+    original = getattr(commands, name)
+    setattr(commands, name, fake)
+    try:
+        yield
+    finally:
+        setattr(commands, name, original)
+
+
+def bible_verse(text, book='John', chapter=3, verse=16):
+    return {'random_verse': {'book': book, 'chapter': chapter, 'verse': verse, 'text': text}}
+
+
+def test_bible_success():
+    area = make_area()
+    urls = []
+
+    async def fake_json(url, headers=None):
+        urls.append(url)
+        return bible_verse('Jesus wept.\n', book='John', chapter=11, verse=35)
+
+    with fake_http('_http_get_json', fake_json):
+        out = run(area.generate('!bible', area.app))
+    assert out == '[BIBLE] Jesus wept. - John 11:35'
+    assert urls == [commands.BIBLE_URL]
+
+
+def test_bible_joins_the_lines_of_a_verse():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return bible_verse('In the beginning\nGod created  the heavens.\n')
+
+    with fake_http('_http_get_json', fake_json):
+        out = run(area.generate('!bible', area.app))
+    assert out == '[BIBLE] In the beginning God created the heavens. - John 3:16'
+
+
+def test_bible_rerolls_a_long_verse():
+    area = make_area()
+    replies = iter([bible_verse('x' * commands.REPLY_MAX_LEN), bible_verse('Pray.')])
+
+    async def fake_json(url, headers=None):
+        return next(replies)
+
+    with fake_http('_http_get_json', fake_json):
+        out = run(area.generate('!bible', area.app))
+    assert out == '[BIBLE] Pray. - John 3:16'
+
+
+def test_bible_failure_returns_error():
+    area = make_area()
+
+    async def boom(url, headers=None):
+        raise RuntimeError('network down')
+
+    with fake_http('_http_get_json', boom):
+        out = run(area.generate('!bible', area.app))
+    assert out == f"[BIBLE] {commands.FAIL_MARK} couldn't fetch a verse right now"
+
+
+def test_bible_empty_verse_returns_error():
+    area = make_area()
+
+    async def fake_json(url, headers=None):
+        return {'random_verse': {}}
+
+    with fake_http('_http_get_json', fake_json):
+        out = run(area.generate('!bible', area.app))
+    assert out == f"[BIBLE] {commands.FAIL_MARK} couldn't fetch a verse right now"
 
 
 def test_help_includes_new_commands_when_enabled():

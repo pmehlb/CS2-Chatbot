@@ -83,7 +83,7 @@ file.
 | Character.AI (via `PyCharacterAI`) | `CharacterAIArea` in `areas/characterai.py` | Authentication, character browsing, chat session creation, and message generation. |
 | OpenAI API (via `openai`) | `ChatGPTArea` in `areas/chatgpt.py` | Generates ChatGPT replies (needs an OpenAI API key). |
 | Anthropic Messages API (via `anthropic`) | `ClaudeArea` in `areas/claude.py` | Generates Claude replies (needs an Anthropic API key). |
-| Free keyless web APIs (icanhazdadjoke, uselessfacts, dummyjson, adviceslip) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, and `!fortunecookie`. |
+| Free keyless web APIs (icanhazdadjoke, uselessfacts, dummyjson, adviceslip, bible-api.com) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, and `!bible`. |
 | AlphaVantage | `CommandBotArea` (`!ticker`) | Stock quote / currency rate. Uses an in-source free-tier key (rate-limited to ~25 requests/day). |
 
 ## Local endpoints

@@ -47,6 +47,10 @@ QUOTE_URL = 'https://dummyjson.com/quotes/random'
 # !fortunecookie source.
 FORTUNE_URL = 'https://api.adviceslip.com/advice'
 
+# !bible source: a random verse of the World English Bible (public domain).
+# Verses have no length filter (see REPLY_MAX_LEN).
+BIBLE_URL = 'https://bible-api.com/data/web/random'
+
 # !ticker source. _ticker_url() adds the query string and the API key.
 # The AlphaVantage key is user-provided, in-source by request. Free tier is
 # rate-limited to ~25 requests/day; on limit the API returns a JSON body with
@@ -170,6 +174,7 @@ class CommandBotArea(ChatArea):
             Command('quote', '!quote', 'random quote', 'Random', self._cmd_quote),
             Command('fortunecookie', '!fortunecookie', 'fortune cookie advice', 'Random',
                     self._cmd_fortunecookie),
+            Command('bible', '!bible', 'random bible verse', 'Random', self._cmd_bible),
             Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup', 'Tools',
                     self._cmd_ticker, reroll=False),
             # The table itself tells players about !join and the moves.
@@ -326,6 +331,19 @@ class CommandBotArea(ChatArea):
         except Exception as e:
             logger.warning(f'fortunecookie fetch failed: {e}')
             return tagged(tag, f"{FAIL_MARK} couldn't fetch advice right now")
+
+    async def _cmd_bible(self, arg: str, tag: str = 'BIBLE') -> Reply:
+        try:
+            verse = (await _http_get_json(BIBLE_URL)).get('random_verse') or {}
+            # The text keeps the line breaks of the printed verse.
+            text = ' '.join((verse.get('text') or '').split())
+            if not text:
+                raise ValueError('no verse text')
+            ref = f"{verse.get('book')} {verse.get('chapter')}:{verse.get('verse')}"
+            return tagged(tag, f'{text} - {ref}')
+        except Exception as e:
+            logger.warning(f'bible fetch failed: {e}')
+            return tagged(tag, f"{FAIL_MARK} couldn't fetch a verse right now")
 
     async def _cmd_ticker(self, arg: str, tag: str = 'TICKER') -> Reply:
         # Only two AlphaVantage functions are supported: GLOBAL_QUOTE (one token)
