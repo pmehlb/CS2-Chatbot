@@ -84,6 +84,7 @@ file.
 | OpenAI API (via `openai`) | `ChatGPTArea` in `areas/chatgpt.py` | Generates ChatGPT replies (needs an OpenAI API key). |
 | Anthropic Messages API (via `anthropic`) | `ClaudeArea` in `areas/claude.py` | Generates Claude replies (needs an Anthropic API key). |
 | Free keyless web APIs (icanhazdadjoke, uselessfacts, dummyjson, adviceslip, bible-api.com) | `CommandBotArea` in `areas/commands.py` (via `httpx`) | Back `!dadjoke`, `!fact`, `!quote`, `!fortunecookie`, and `!bible`. |
+| GitHub raw file (`Zen-CODE/ZenKEY`, `Quotes/Confucius says.txt`) | `CommandBotArea` (`!confucius`) | The "Confucius says" sayings. The bot fetches the file on first use and keeps it for the session. |
 | AlphaVantage | `CommandBotArea` (`!ticker`) | Stock quote / currency rate. Uses an in-source free-tier key (rate-limited to ~25 requests/day). |
 
 ## Local endpoints

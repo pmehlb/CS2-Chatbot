@@ -128,7 +128,7 @@ def test_help_is_one_line_per_category_of_enabled_only():
     # !help itself is not listed, and the blackjack moves are not either.
     assert out[1:-1] == [
         'Games: !slots !8ball [question] !roll [n] !flip !blackjack',
-        'Random: !quote !fortunecookie !bible',
+        'Random: !quote !fortunecookie !bible !confucius',
         'Tools: !ping !ticker [symbol | from to]',
     ]
 
@@ -136,7 +136,7 @@ def test_help_is_one_line_per_category_of_enabled_only():
 def test_help_skips_a_category_with_nothing_enabled():
     area = make_area()
     area.enabled = {name: False for name in ('dadjoke', 'fact', 'quote', 'fortunecookie',
-                                         'bible')}
+                                         'bible', 'confucius')}
     assert not any(line.startswith('Random:') for line in area._help_lines())
 
 
@@ -516,6 +516,67 @@ def test_bible_empty_verse_returns_error():
     with fake_http('_http_get_json', fake_json):
         out = run(area.generate('!bible', area.app))
     assert out == f"[BIBLE] {commands.FAIL_MARK} couldn't fetch a verse right now"
+
+
+CONFUCIUS_FILE = (
+    '3 entries\n'
+    'Confucius says "Man who drop watch in toilet have shitty time."\n'
+    'Confucius says "To prevent hangover stay drunk!" \n'
+    '\n'
+    'Confucius says "Man who drive like hell bound to get there!"\n'
+)
+
+
+def test_parse_confucius_takes_the_quoted_sayings():
+    assert commands.parse_confucius(CONFUCIUS_FILE) == [
+        'Man who drop watch in toilet have shitty time.',
+        'To prevent hangover stay drunk!',
+        'Man who drive like hell bound to get there!',
+    ]
+
+
+def test_confucius_fetches_the_file_once():
+    area = make_area()
+    urls = []
+
+    async def fake_text(url, headers=None):
+        urls.append(url)
+        return CONFUCIUS_FILE
+
+    with fake_http('_http_get_text', fake_text):
+        first = run(area.generate('!confucius', area.app))
+        second = run(area.generate('!confucius', area.app))
+    sayings = commands.parse_confucius(CONFUCIUS_FILE)
+    for out in (first, second):
+        assert out.startswith('[CONFUCIUS] ')
+        assert out[len('[CONFUCIUS] '):] in sayings
+    assert urls == [commands.CONFUCIUS_URL]
+
+
+def test_confucius_failure_returns_error_and_tries_again():
+    area = make_area()
+    calls = []
+
+    async def boom(url, headers=None):
+        calls.append(url)
+        raise RuntimeError('network down')
+
+    with fake_http('_http_get_text', boom):
+        out = run(area.generate('!confucius', area.app))
+        run(area.generate('!confucius', area.app))
+    assert out == f"[CONFUCIUS] {commands.FAIL_MARK} couldn't fetch a saying right now"
+    assert len(calls) == 2
+
+
+def test_confucius_file_with_no_sayings_returns_error():
+    area = make_area()
+
+    async def fake_text(url, headers=None):
+        return '<html>404</html>'
+
+    with fake_http('_http_get_text', fake_text):
+        out = run(area.generate('!confucius', area.app))
+    assert out == f"[CONFUCIUS] {commands.FAIL_MARK} couldn't fetch a saying right now"
 
 
 def test_help_includes_new_commands_when_enabled():

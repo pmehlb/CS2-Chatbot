@@ -12,6 +12,7 @@ lines go out through generate_timed(), which the chat loop polls on every tick.
 """
 import logging
 import random
+import re
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -50,6 +51,12 @@ FORTUNE_URL = 'https://api.adviceslip.com/advice'
 # !bible source: a random verse of the World English Bible (public domain).
 # Verses have no length filter (see REPLY_MAX_LEN).
 BIBLE_URL = 'https://bible-api.com/data/web/random'
+
+# !confucius source: one 'Confucius says "..."' line per saying. The bot
+# fetches the file on first use and keeps the sayings for the session.
+CONFUCIUS_URL = ('https://raw.githubusercontent.com/Zen-CODE/ZenKEY/master/'
+                 'Quotes/Confucius%20says.txt')
+CONFUCIUS_LINE = re.compile(r'^\s*Confucius says\s+"(.+)"\s*$')
 
 # !ticker source. _ticker_url() adds the query string and the API key.
 # The AlphaVantage key is user-provided, in-source by request. Free tier is
@@ -127,6 +134,16 @@ def _reply_len(reply: Reply) -> int:
     return max(len(line) for line in lines)
 
 
+def parse_confucius(text: str) -> List[str]:
+    """The sayings in the !confucius source file, without 'Confucius says'."""
+    sayings = []
+    for line in (text or '').splitlines():
+        match = CONFUCIUS_LINE.match(line)
+        if match:
+            sayings.append(match.group(1).strip())
+    return sayings
+
+
 def _ticker_url(**params) -> str:
     """TICKER_URL with an AlphaVantage query string and the API key."""
     return f'{TICKER_URL}?' + urllib.parse.urlencode({**params, 'apikey': ALPHAVANTAGE_KEY})
@@ -159,6 +176,7 @@ class CommandBotArea(ChatArea):
         self.app = None
         self.enabled = {}               # name -> bool (absent = on by default)
         self.table = blackjack.Table()
+        self.confucius: List[str] = []  # the !confucius sayings, fetched on first use
 
         # Ordered registry; order drives the checkbox list and the order
         # inside each !help line.
@@ -175,6 +193,8 @@ class CommandBotArea(ChatArea):
             Command('fortunecookie', '!fortunecookie', 'fortune cookie advice', 'Random',
                     self._cmd_fortunecookie),
             Command('bible', '!bible', 'random bible verse', 'Random', self._cmd_bible),
+            Command('confucius', '!confucius', '"Confucius says" joke', 'Random',
+                    self._cmd_confucius),
             Command('ticker', '!ticker [symbol | from to]', 'stock/currency lookup', 'Tools',
                     self._cmd_ticker, reroll=False),
             # The table itself tells players about !join and the moves.
@@ -344,6 +364,17 @@ class CommandBotArea(ChatArea):
         except Exception as e:
             logger.warning(f'bible fetch failed: {e}')
             return tagged(tag, f"{FAIL_MARK} couldn't fetch a verse right now")
+
+    async def _cmd_confucius(self, arg: str, tag: str = 'CONFUCIUS') -> Reply:
+        # A failed fetch keeps the list empty, so the next !confucius tries again.
+        if not self.confucius:
+            try:
+                self.confucius = parse_confucius(await _http_get_text(CONFUCIUS_URL))
+            except Exception as e:
+                logger.warning(f'confucius fetch failed: {e}')
+            if not self.confucius:
+                return tagged(tag, f"{FAIL_MARK} couldn't fetch a saying right now")
+        return tagged(tag, random.choice(self.confucius))
 
     async def _cmd_ticker(self, arg: str, tag: str = 'TICKER') -> Reply:
         # Only two AlphaVantage functions are supported: GLOBAL_QUOTE (one token)
